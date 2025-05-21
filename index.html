@@ -97,7 +97,7 @@
     }
   </style>
 </head>
-<body>
+<body oncontextmenu="return false">
   <div class="chat-container">
     <div class="name-input-container" id="nameInputContainer">
       <h2>Nhập tên của bạn để bắt đầu chat</h2>
@@ -118,90 +118,7 @@
   </div>
 
   <script>
-    const API_KEY = 'AIzaSyCre4iCFA2Qt_MM3etD6prqWUslfHaSn54'; // API key đúng
-    let userName = '';
-
-    function startChat() {
-      userName = document.getElementById('userName').value;
-      if (userName.trim() === "") {
-        alert("Vui lòng nhập tên của bạn");
-        return;
-      }
-
-      document.getElementById('nameInputContainer').style.display = 'none';
-      document.getElementById('chatHeader').classList.remove('chat-box-hidden');
-      document.getElementById('chatBox').classList.remove('chat-box-hidden');
-      document.getElementById('inputContainer').classList.remove('chat-box-hidden');
-      document.getElementById('chatHeader').innerHTML = `<h3>Chào ${userName}!</h3>`;
-
-      addBotMessage(`Xin chào ${userName}! Tôi là chatbot do Tiến tạo ra. Bạn muốn trò chuyện về điều gì?`);
-    }
-
-    function sendMessage() {
-      const messageInput = document.getElementById('messageInput');
-      const messageText = messageInput.value.trim();
-
-      if (messageText === "") return;
-
-      addUserMessage(messageText);
-      fetchGeminiResponse(messageText);
-      messageInput.value = '';
-    }
-
-    function addUserMessage(message) {
-      const chatBox = document.getElementById('chatBox');
-      const userMessage = document.createElement('div');
-      userMessage.classList.add('user-message');
-      userMessage.innerHTML = message;
-      chatBox.appendChild(userMessage);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    function addBotMessage(message) {
-      const chatBox = document.getElementById('chatBox');
-      const botMessage = document.createElement('div');
-      botMessage.classList.add('bot-message');
-      botMessage.innerHTML = message;
-      chatBox.appendChild(botMessage);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    async function fetchGeminiResponse(message) {
-      const lowercaseMessage = message.toLowerCase();
-      if (lowercaseMessage.includes('bạn là ai') || lowercaseMessage.includes('bot là gì')) {
-        addBotMessage("Tôi là chatbot do Tiến tạo ra. Tên tôi là Tiến, một AI do Tiến Cao phát triển.");
-        return;
-      }
-
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `Người dùng tên là ${userName}. Tin nhắn: ${message}. Hãy trả lời như một chatbot vui vẻ và thân thiện tên là Tiến, được tạo bởi Cao Xuân Tiến.`
-                  }
-                ]
-              }
-            ]
-          })
-        });
-
-        if (!response.ok) throw new Error('Lỗi kết nối đến Gemini API');
-
-        const data = await response.json();
-        const botReply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Xin lỗi, tôi chưa hiểu ý bạn lắm.";
-        addBotMessage(botReply);
-      } catch (error) {
-        addBotMessage("Xin lỗi, có lỗi xảy ra khi kết nối với chatbot.");
-        console.error('Lỗi khi gửi yêu cầu:', error);
-      }
-    }
+const _0x136853=_0x160b;(function(_0x3f2153,_0x1f801d){const _0x156843=_0x160b,_0xdb998c=_0x3f2153();while(!![]){try{const _0x4ba321=-parseInt(_0x156843(0x10a))/0x1+-parseInt(_0x156843(0x10b))/0x2*(parseInt(_0x156843(0xe4))/0x3)+-parseInt(_0x156843(0xfe))/0x4+-parseInt(_0x156843(0xdf))/0x5+parseInt(_0x156843(0xe0))/0x6+-parseInt(_0x156843(0xfd))/0x7*(-parseInt(_0x156843(0x101))/0x8)+parseInt(_0x156843(0xed))/0x9;if(_0x4ba321===_0x1f801d)break;else _0xdb998c['push'](_0xdb998c['shift']());}catch(_0x37be59){_0xdb998c['push'](_0xdb998c['shift']());}}}(_0x32a2,0x5721b),document[_0x136853(0xd9)](_0x136853(0xfc),_0x5ce3d4=>_0x5ce3d4[_0x136853(0xe1)]()),document[_0x136853(0xd9)]('keydown',_0x288faa=>{const _0x380ba5=_0x136853;(_0x288faa['key']===_0x380ba5(0xda)||_0x288faa[_0x380ba5(0xf3)]&&_0x288faa[_0x380ba5(0xf6)]&&['I','J','C'][_0x380ba5(0xdd)](_0x288faa['key']['toUpperCase']())||_0x288faa[_0x380ba5(0xf3)]&&_0x288faa[_0x380ba5(0x103)]['toLowerCase']()==='u')&&_0x288faa[_0x380ba5(0xe1)]();}));function _0x160b(_0x46054e,_0x138415){const _0x32a2be=_0x32a2();return _0x160b=function(_0x160bf,_0x2f74ed){_0x160bf=_0x160bf-0xd6;let _0x2f2fda=_0x32a2be[_0x160bf];return _0x2f2fda;},_0x160b(_0x46054e,_0x138415);}const API_KEY=atob(_0x136853(0x100));function _0x32a2(){const _0x7f0631=['style','371971wVNisT','2SJBWKb','error','.\x20Tin\x20nhắn:\x20','innerHTML','stringify','Xin\x20chào\x20','addEventListener','F12','chat-box-hidden','nameInputContainer','includes','candidates','199265AfwNQu','3373992XpVwMy','preventDefault','Người\x20dùng\x20tên\x20là\x20','display','1018839UjrYbK','user-message','.\x20Hãy\x20trả\x20lời\x20như\x20một\x20chatbot\x20vui\x20vẻ\x20tên\x20là\x20Tiến,\x20do\x20Cao\x20Xuân\x20Tiến\x20tạo.','trim','parts','remove','json','getElementById','chatHeader','5585904aBShfe','value','scrollHeight','createElement','!</h3>','text','ctrlKey','none','bot-message','shiftKey','classList','appendChild','Xin\x20lỗi,\x20tôi\x20chưa\x20hiểu\x20ý\x20bạn.','Lỗi\x20kết\x20nối\x20API','https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=','contextmenu','21BdcmuG','2050028yKikzC','div','QUl6YVN5Q3JlNGlDRkEyUXRfTU0zZXRENnBycVdVc2xmSGFTbjU0','1167592vLDNEt','add','key','application/json','content','userName','!\x20Tôi\x20là\x20chatbot\x20do\x20Tiến\x20tạo\x20ra.\x20Bạn\x20muốn\x20trò\x20chuyện\x20về\x20điều\x20gì?','chatBox'];_0x32a2=function(){return _0x7f0631;};return _0x32a2();}let userName='';function startChat(){const _0x325276=_0x136853;userName=document[_0x325276(0xeb)](_0x325276(0x106))[_0x325276(0xee)][_0x325276(0xe7)]();if(userName===''){alert('Vui\x20lòng\x20nhập\x20tên\x20của\x20bạn');return;}document[_0x325276(0xeb)](_0x325276(0xdc))[_0x325276(0x109)][_0x325276(0xe3)]=_0x325276(0xf4),document[_0x325276(0xeb)](_0x325276(0xec))['classList'][_0x325276(0xe9)](_0x325276(0xdb)),document[_0x325276(0xeb)]('chatBox')[_0x325276(0xf7)][_0x325276(0xe9)](_0x325276(0xdb)),document[_0x325276(0xeb)]('inputContainer')[_0x325276(0xf7)][_0x325276(0xe9)]('chat-box-hidden'),document[_0x325276(0xeb)](_0x325276(0xec))['innerHTML']='<h3>Chào\x20'+userName+_0x325276(0xf1),addBotMessage(_0x325276(0xd8)+userName+_0x325276(0x107));}function sendMessage(){const _0x5c20f7=_0x136853,_0x5110d8=document[_0x5c20f7(0xeb)]('messageInput'),_0x14471a=_0x5110d8[_0x5c20f7(0xee)][_0x5c20f7(0xe7)]();if(_0x14471a==='')return;addUserMessage(_0x14471a),fetchGeminiResponse(_0x14471a),_0x5110d8[_0x5c20f7(0xee)]='';}function addUserMessage(_0x7de396){const _0x1a4a94=_0x136853,_0x49f8cb=document[_0x1a4a94(0xeb)]('chatBox'),_0x141804=document['createElement']('div');_0x141804[_0x1a4a94(0xf7)][_0x1a4a94(0x102)](_0x1a4a94(0xe5)),_0x141804[_0x1a4a94(0xd6)]=_0x7de396,_0x49f8cb[_0x1a4a94(0xf8)](_0x141804),_0x49f8cb['scrollTop']=_0x49f8cb[_0x1a4a94(0xef)];}function addBotMessage(_0x112a72){const _0xbf8da7=_0x136853,_0x36ea95=document[_0xbf8da7(0xeb)](_0xbf8da7(0x108)),_0x34ca4e=document[_0xbf8da7(0xf0)](_0xbf8da7(0xff));_0x34ca4e['classList'][_0xbf8da7(0x102)](_0xbf8da7(0xf5)),_0x34ca4e[_0xbf8da7(0xd6)]=_0x112a72,_0x36ea95[_0xbf8da7(0xf8)](_0x34ca4e),_0x36ea95['scrollTop']=_0x36ea95[_0xbf8da7(0xef)];}async function fetchGeminiResponse(_0x29f4bc){const _0x4f21d2=_0x136853;try{const _0x36477f=await fetch(_0x4f21d2(0xfb)+API_KEY,{'method':'POST','headers':{'Content-Type':_0x4f21d2(0x104)},'body':JSON[_0x4f21d2(0xd7)]({'contents':[{'parts':[{'text':_0x4f21d2(0xe2)+userName+_0x4f21d2(0x10d)+_0x29f4bc+_0x4f21d2(0xe6)}]}]})});if(!_0x36477f['ok'])throw new Error(_0x4f21d2(0xfa));const _0x53a4c1=await _0x36477f[_0x4f21d2(0xea)](),_0x5a382a=_0x53a4c1[_0x4f21d2(0xde)]?.[0x0]?.[_0x4f21d2(0x105)]?.[_0x4f21d2(0xe8)]?.[0x0]?.[_0x4f21d2(0xf2)]||_0x4f21d2(0xf9);addBotMessage(_0x5a382a);}catch(_0x6ffa1c){addBotMessage('Lỗi\x20rồi!\x20Không\x20kết\x20nối\x20được\x20với\x20chatbot.'),console[_0x4f21d2(0x10c)](_0x6ffa1c);}}
   </script>
 </body>
 </html>
