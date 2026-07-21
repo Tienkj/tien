@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         NetCheat - Intercept shorten.php & Extract Key
+// @name         NetCheat - Single Key Generator (Intercept shorten.php)
 // @namespace    http://tampermonkey.net/
-// @version      17.0
-// @description  Tự động chọn app/expiry, chặn request shorten.php để lấy key, chỉ cần giải captcha.
+// @version      19.0
+// @description  Chọn app, nhấn nút tạo 1 key, tự động điền form, bắt request shorten.php để lấy key.
 // @author       You
 // @match        *://techdavisk.click/*
 // @grant        none
@@ -12,80 +12,82 @@
 (function() {
     'use strict';
 
-    const APPS = {
-        netcheat: { prefix: 'NetCheat', name: 'NetCheat' },
-        netplus: { prefix: 'NetPlus', name: 'NetPlus' },
-        panelpc: { prefix: 'PanelPC', name: 'Panel PC' },
-        fakelagpc: { prefix: 'FakeLagPC', name: 'Fake Lag PC' }
+    // Ánh xạ app -> prefix (để hiển thị, không cần tạo key thủ công)
+    const APP_MAP = {
+        netcheat: 'NetCheat',
+        netplus: 'NetPlus',
+        panelpc: 'PanelPC',
+        fakelagpc: 'FakeLagPC'
     };
 
-    const CONFIG = {
-        app: 'netcheat',      // app mặc định
-        expiry: '1',          // 1 ngày
-        count: 5
-    };
+    let pendingKeyResolve = null;
+    let currentKey = '';
 
-    let generatedKeys = [];
-    let currentIndex = 0;
-    let isProcessing = false;
-    let pendingKeyResolve = null; // resolve khi bắt được key
-    let originalXhrOpen = XMLHttpRequest.prototype.open;
-    let originalXhrSend = XMLHttpRequest.prototype.send;
+    // ===== GHI ĐÈ XMLHttpRequest ĐỂ BẮT shorten.php =====
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
 
-    // Ghi đè XMLHttpRequest để bắt request shorten.php
     XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-        this._interceptUrl = url;
-        return originalXhrOpen.call(this, method, url, ...rest);
+        this._url = url;
+        return origOpen.call(this, method, url, ...rest);
     };
 
     XMLHttpRequest.prototype.send = function(body) {
-        if (this._interceptUrl && this._interceptUrl.includes('shorten.php')) {
-            // Bắt request shorten.php
-            const urlObj = new URL(this._interceptUrl, window.location.origin);
-            const targetParam = urlObj.searchParams.get('url');
-            if (targetParam) {
-                const targetUrl = decodeURIComponent(targetParam);
-                const targetParams = new URL(targetUrl).searchParams;
-                const key = targetParams.get('key');
-                console.log('[Interceptor] Bắt được key từ shorten.php:', key);
-                if (key && pendingKeyResolve) {
-                    pendingKeyResolve(key);
-                    pendingKeyResolve = null;
+        if (this._url && this._url.includes('shorten.php')) {
+            try {
+                const urlObj = new URL(this._url, window.location.origin);
+                const targetParam = urlObj.searchParams.get('url');
+                if (targetParam) {
+                    const targetUrl = decodeURIComponent(targetParam);
+                    const targetParams = new URL(targetUrl).searchParams;
+                    const key = targetParams.get('key');
+                    if (key && pendingKeyResolve) {
+                        pendingKeyResolve(key);
+                        pendingKeyResolve = null;
+                    }
                 }
-            }
-            // Vẫn gửi request thật (hoặc có thể chặn bằng cách return)
+            } catch (e) {}
         }
-        return originalXhrSend.call(this, body);
+        return origSend.call(this, body);
     };
 
     // ===== GIAO DIỆN =====
     function createPanel() {
         const panel = document.createElement('div');
-        panel.id = 'intercept-panel';
+        panel.id = 'single-key-panel';
         panel.style.cssText = `
             position:fixed; bottom:20px; right:20px; background:#0a0a14; color:#fff;
             border:1px solid #10b981; border-radius:16px; padding:16px; z-index:9999;
-            width:340px; box-shadow:0 10px 30px rgba(0,0,0,0.7); font-family:sans-serif;
+            width:300px; box-shadow:0 10px 30px rgba(0,0,0,0.7); font-family:sans-serif;
         `;
         panel.innerHTML = `
             <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
-                <strong>🔑 Key Interceptor</strong>
+                <strong>🔑 Tạo Key</strong>
                 <button id="close-panel" style="background:none; border:none; color:#aaa; cursor:pointer;">✕</button>
             </div>
-            <div style="display:flex; gap:8px; margin-bottom:12px;">
-                <button id="start-btn" style="flex:1; padding:8px; background:#10b981; border:none; border-radius:8px; color:#fff; font-weight:bold; cursor:pointer;">▶ Bắt đầu (${CONFIG.count} key)</button>
-                <button id="stop-btn" style="flex:1; padding:8px; background:#ef4444; border:none; border-radius:8px; color:#fff; font-weight:bold; cursor:pointer;" disabled>⏹ Dừng</button>
+
+            <label style="font-size:12px; color:#aaa;">Ứng dụng:</label>
+            <select id="app-select" style="width:100%; padding:8px; margin:4px 0 12px; background:#111; color:#fff; border:1px solid #333; border-radius:8px;">
+                <option value="netcheat">NetCheat</option>
+                <option value="netplus">NetPlus</option>
+                <option value="panelpc">Panel PC</option>
+                <option value="fakelagpc">Fake Lag PC</option>
+            </select>
+
+            <button id="generate-btn" style="width:100%; padding:10px; background:#10b981; border:none; border-radius:8px; color:#fff; font-weight:bold; cursor:pointer;">▶ Tạo Key</button>
+
+            <div id="key-result" style="margin-top:12px; background:#111; padding:10px; border-radius:8px; text-align:center; font-size:14px; color:#10b981; min-height:20px;">
+                Key sẽ hiện ở đây
             </div>
-            <div id="progress" style="font-size:13px; margin-bottom:8px;">Sẵn sàng</div>
-            <div id="keys-log" style="background:#111; padding:8px; border-radius:8px; max-height:200px; overflow-y:auto; font-size:12px; color:#aaa; margin-bottom:8px;">Chưa có key...</div>
-            <button id="copy-btn" style="width:100%; padding:8px; background:#6366f1; border:none; border-radius:8px; color:#fff; font-weight:bold; cursor:pointer;" disabled>📋 Copy tất cả key</button>
+
+            <button id="copy-one-btn" style="width:100%; padding:6px; margin-top:8px; background:#6366f1; border:none; border-radius:8px; color:#fff; cursor:pointer;" disabled>📋 Copy key này</button>
         `;
         document.body.appendChild(panel);
 
-        // Nút captcha
+        // Nút captcha (nằm ngoài panel, cố định)
         const captchaBtn = document.createElement('button');
         captchaBtn.id = 'captcha-continue';
-        captchaBtn.innerHTML = '🛑 Đã giải captcha?<br>Bấm vào đây để tiếp tục';
+        captchaBtn.innerHTML = '🛑 Đã giải captcha?<br>Bấm vào đây';
         captchaBtn.style.cssText = `
             position:fixed; bottom:250px; right:20px; background:#f59e0b; color:#000;
             padding:10px 16px; border-radius:12px; z-index:10000; font-weight:bold;
@@ -94,80 +96,69 @@
         captchaBtn.onclick = continueAfterCaptcha;
         document.body.appendChild(captchaBtn);
 
+        // Sự kiện panel
         document.getElementById('close-panel').onclick = () => panel.style.display = 'none';
-        document.getElementById('start-btn').onclick = start;
-        document.getElementById('stop-btn').onclick = stop;
-        document.getElementById('copy-btn').onclick = () => {
-            if (generatedKeys.length) {
-                navigator.clipboard.writeText(generatedKeys.join('\n'));
-                alert('Đã copy ' + generatedKeys.length + ' key!');
+        document.getElementById('generate-btn').onclick = startGenerate;
+        document.getElementById('copy-one-btn').onclick = () => {
+            if (currentKey) {
+                navigator.clipboard.writeText(currentKey);
+                alert('Đã copy: ' + currentKey);
             }
         };
     }
 
-    function start() {
-        if (isProcessing) return;
-        isProcessing = true;
-        currentIndex = 0;
-        generatedKeys = [];
-        updateLog();
-        document.getElementById('start-btn').disabled = true;
-        document.getElementById('stop-btn').disabled = false;
-        processNext();
-    }
-
-    function stop() {
-        isProcessing = false;
-        document.getElementById('start-btn').disabled = false;
-        document.getElementById('stop-btn').disabled = true;
-    }
-
-    function updateLog() {
-        const log = document.getElementById('keys-log');
-        if (log) log.innerHTML = generatedKeys.length ? generatedKeys.map((k,i) => `${i+1}. ${k}`).join('<br>') : 'Chưa có key...';
-        document.getElementById('copy-btn').disabled = generatedKeys.length === 0;
-    }
-
-    // ===== TỰ ĐỘNG CHỌN APP, EXPIRY, ĐỢI CAPTCHA =====
-    function prepareForm() {
+    // ===== TỰ ĐỘNG ĐIỀN FORM (CHỌN APP, EXPIRY 1 NGÀY, LINK4M) =====
+    function prepareAndCreate(app) {
         return new Promise((resolve, reject) => {
-            if (typeof showAppSelect !== 'function') return reject('Không thấy showAppSelect');
+            if (typeof showAppSelect !== 'function') return reject('Không tìm thấy hàm showAppSelect');
+
+            // Đảm bảo đóng các dialog cũ nếu có
+            if (typeof closeAppSelect === 'function') closeAppSelect();
+            if (typeof closeExpirySelect === 'function') closeExpirySelect();
+            if (typeof closeShortenerSelect === 'function') closeShortenerSelect();
+            if (typeof closeLinkDialog === 'function') closeLinkDialog();
+
             showAppSelect();
 
             setTimeout(() => {
-                const appItem = document.querySelector(`.select-item[data-app="${CONFIG.app}"]`);
-                if (!appItem) return reject('Không thấy app');
+                const appItem = document.querySelector(`.select-item[data-app="${app}"]`);
+                if (!appItem) return reject('Không thấy app: ' + app);
                 appItem.click();
+
                 setTimeout(() => {
-                    const expiryOpt = document.querySelector(`.expiry-option[data-expiry="${CONFIG.expiry}"]`);
-                    if (!expiryOpt) return reject('Không thấy expiry');
+                    // Chọn expiry 1 ngày (data-expiry="1")
+                    const expiryOpt = document.querySelector('.expiry-option[data-expiry="1"]');
+                    if (!expiryOpt) return reject('Không thấy tuỳ chọn 1 ngày');
                     expiryOpt.click();
+
                     setTimeout(() => {
                         const confirmBtn = document.querySelector('.expiry-confirm-btn');
                         if (!confirmBtn) return reject('Không thấy nút tiếp tục');
                         confirmBtn.click();
+
                         setTimeout(() => {
-                            const shortCard = document.querySelector(`.shortener-card[data-shortener="link4m"]`);
+                            // Chọn link4m (mặc định)
+                            const shortCard = document.querySelector('.shortener-card[data-shortener="link4m"]');
                             if (shortCard) shortCard.click();
-                            // Kiểm tra captcha
+
                             setTimeout(() => {
                                 const captchaBox = document.getElementById('captchaBox');
                                 const createBtn = document.querySelector('.shortener-confirm-btn');
                                 if (!createBtn) return reject('Không thấy nút tạo key');
+
                                 if (captchaBox && captchaBox.style.display !== 'none') {
-                                    // Cần captcha
+                                    // Cần giải captcha -> hiện nút cam
                                     document.getElementById('captcha-continue').style.display = 'block';
-                                    window._pendingCaptcha = resolve;
+                                    window._pendingCaptchaResolve = resolve;
                                 } else {
-                                    // Không cần captcha
                                     createBtn.click();
                                     resolve();
                                 }
-                            }, 600);
-                        }, 600);
-                    }, 600);
-                }, 600);
-            }, 600);
+                            }, 500);
+                        }, 500);
+                    }, 500);
+                }, 500);
+            }, 500);
         });
     }
 
@@ -175,61 +166,59 @@
         document.getElementById('captcha-continue').style.display = 'none';
         const createBtn = document.querySelector('.shortener-confirm-btn');
         if (createBtn) createBtn.click();
-        if (window._pendingCaptcha) {
-            window._pendingCaptcha();
-            window._pendingCaptcha = null;
+        if (window._pendingCaptchaResolve) {
+            window._pendingCaptchaResolve();
+            window._pendingCaptchaResolve = null;
         }
     }
 
-    // Hàm đợi bắt key từ interceptor
+    // Đợi bắt key từ interceptor (timeout 25s)
     function waitForKey() {
         return new Promise((resolve, reject) => {
             pendingKeyResolve = resolve;
-            // Timeout 20s
             setTimeout(() => {
                 if (pendingKeyResolve) {
                     pendingKeyResolve = null;
-                    reject('Timeout chờ key từ shorten.php');
+                    reject('Timeout chờ key');
                 }
-            }, 20000);
+            }, 25000);
         });
     }
 
-    async function processNext() {
-        if (!isProcessing) return;
-        if (currentIndex >= CONFIG.count) {
-            isProcessing = false;
-            document.getElementById('start-btn').disabled = false;
-            document.getElementById('stop-btn').disabled = true;
-            document.getElementById('progress').innerText = `✅ Đã tạo ${generatedKeys.length} key`;
-            updateLog();
-            return;
-        }
-        currentIndex++;
-        document.getElementById('progress').innerText = `Đang tạo key ${currentIndex}/${CONFIG.count}...`;
+    // Hàm chính khi nhấn nút
+    async function startGenerate() {
+        const appSelect = document.getElementById('app-select');
+        const app = appSelect.value;
+        const generateBtn = document.getElementById('generate-btn');
+        const resultDiv = document.getElementById('key-result');
+        const copyBtn = document.getElementById('copy-one-btn');
+
+        generateBtn.disabled = true;
+        generateBtn.textContent = '⏳ Đang tạo...';
+        resultDiv.textContent = 'Đang chuẩn bị...';
+        copyBtn.disabled = true;
+        currentKey = '';
 
         try {
-            await prepareForm(); // Chọn app, expiry, chờ captcha, bấm tạo key
-            // Sau khi bấm tạo key, request shorten.php sẽ được gửi -> interceptor bắt key
+            // Mở dialog, chọn app, expiry, chờ captcha, bấm tạo key
+            await prepareAndCreate(app);
+            // Sau khi bấm tạo key, request shorten.php sẽ được gửi và bị chặn
             const key = await waitForKey();
-            if (key) {
-                generatedKeys.push(key);
-                updateLog();
-                // Thông báo nhẹ
-                const toast = document.createElement('div');
-                toast.textContent = `✅ Key ${currentIndex}: ${key}`;
-                toast.style.cssText = 'position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#10b981; color:#fff; padding:8px 16px; border-radius:20px; z-index:99999;';
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 2000);
-            }
+            if (!key) throw new Error('Không bắt được key');
+
+            currentKey = key;
+            resultDiv.textContent = key;
+            copyBtn.disabled = false;
         } catch (err) {
-            console.error('[Interceptor] Lỗi:', err);
-            alert('Lỗi: ' + err.message);
-            stop();
-            return;
+            console.error(err);
+            resultDiv.textContent = 'Lỗi: ' + err.message;
+        } finally {
+            generateBtn.disabled = false;
+            generateBtn.textContent = '▶ Tạo Key';
+            document.getElementById('captcha-continue').style.display = 'none';
+            window._pendingCaptchaResolve = null;
+            pendingKeyResolve = null;
         }
-        // Đợi 2 giây trước khi tạo key tiếp theo
-        setTimeout(processNext, 2000);
     }
 
     // Khởi tạo
