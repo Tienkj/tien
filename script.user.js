@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Astutech - FULL LOCK (No redirect + Auto key)
+// @name         Astutech FF - Fake Ads + No Redirect + Auto Key
 // @namespace    http://tampermonkey.net/
-// @version      5.0
-// @description  Giữ chết trang, chặn mọi redirect, popup, tự động lấy key
+// @version      6.1
+// @description  Giả mạo quảng cáo để qua mặt adblock detector, chặn redirect, tự động lấy key
 // @author       You
 // @match        *://*.unlockffbeta.com/*
 // @match        *://unlockffbeta.com/*
@@ -13,94 +13,55 @@
 (function() {
     'use strict';
 
-    // ---- 1. Chặn popup ----
+    // ===== 1. GIẢ MẠO AD SLOTS (đánh lừa bộ phát hiện adblock) =====
+    const origGetById = Document.prototype.getElementById;
+    Document.prototype.getElementById = function(id) {
+        // Khi trang kiểm tra hai slot này, ta trả về 1 div có nội dung
+        if (id === 'ad-slot-top' || id === 'ad-slot-bottom') {
+            const fake = document.createElement('div');
+            fake.innerHTML = '<span></span>'; // có phần tử con
+            fake.id = id;
+            return fake;
+        }
+        return origGetById.call(this, id);
+    };
+
+    // ===== 2. CHẶN POPUP =====
     window.open = () => null;
 
-    // ---- 2. Hàm chặn redirect ----
-    function blockRedirect(url) {
+    // ===== 3. CHẶN MỌI REDIRECT =====
+    function block(url) {
         if (!url || url === 'undefined') return;
         try {
             const u = new URL(url, location.origin);
-            // Chỉ cho phép ở lại trang gốc
             if (u.hostname !== location.hostname) {
-                console.log('[LOCK] Blocked external:', url);
+                console.log('[BYPASS] Blocked:', url);
                 return;
             }
-        } catch (e) {
-            // URL không hợp lệ cũng chặn
-            return;
-        }
-        // Cho phép chuyển trang nội bộ (nhưng không reload)
+        } catch (e) { return; }
         history.pushState(null, '', url);
     }
 
-    // Ghi đè Location.prototype.href setter
     const origHref = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
     Object.defineProperty(Location.prototype, 'href', {
         get: origHref.get,
-        set: function(v) { blockRedirect(v); },
+        set: function(v) { block(v); },
         configurable: true
     });
+    Location.prototype.replace = function(u) { block(u); };
+    Location.prototype.assign = function(u) { block(u); };
+    Location.prototype.reload = function() {};
 
-    // Ghi đè replace, assign, reload
-    Location.prototype.replace = function(url) { blockRedirect(url); };
-    Location.prototype.assign = function(url) { blockRedirect(url); };
-    Location.prototype.reload = function() { console.log('[LOCK] Blocked reload'); };
-
-    // ---- 3. Chặn document.location (một số script dùng) ----
-    let docLocValue = document.location.href;
-    Object.defineProperty(document, 'location', {
-        get: () => document.location, // để các thuộc tính khác vẫn hoạt động
-        set: function(v) { blockRedirect(v); },
-        configurable: true
-    });
-
-    // ---- 4. Chặn window.top.location ----
-    try {
-        if (window.top !== window) {
-            let topLocValue = window.top.location.href;
-            Object.defineProperty(window.top, 'location', {
-                get: () => window.top.location,
-                set: function(v) { blockRedirect(v); },
-                configurable: true
-            });
-        }
-    } catch(e) {}
-
-    // ---- 5. Xóa script quảng cáo ngay khi thấy ----
-    function killAdScripts() {
-        const bad = ['zzlocalsquared.com', 'pincersmidnight.com', 'cloudflareinsights.com'];
-        document.querySelectorAll('script[src]').forEach(s => {
-            if (bad.some(d => s.src.includes(d))) {
-                s.remove();
-                console.log('[LOCK] Removed', s.src);
-            }
-        });
-    }
-    // Chạy liên tục trong quá trình parse HTML
-    document.addEventListener('DOMContentLoaded', killAdScripts);
-    new MutationObserver(killAdScripts).observe(document.documentElement, {
-        childList: true, subtree: true
-    });
-
-    // ---- 6. Xóa meta refresh ----
-    function removeMeta() {
+    // ===== 4. XÓA META REFRESH =====
+    const removeMeta = () => {
         document.querySelectorAll('meta[http-equiv="refresh"]').forEach(m => m.remove());
-    }
-    document.addEventListener('DOMContentLoaded', removeMeta);
-    const metaObs = new MutationObserver(removeMeta);
-    window.addEventListener('DOMContentLoaded', () => {
-        metaObs.observe(document.head, { childList: true, subtree: true });
-    });
+    };
+    new MutationObserver(removeMeta).observe(document.documentElement, { childList: true, subtree: true });
 
-    // ---- 7. Chặn beforeunload ----
-    window.addEventListener('beforeunload', e => {
-        e.preventDefault();
-        e.returnValue = '';
-        return '';
-    }, true);
+    // ===== 5. CHẶN BEFOREUNLOAD =====
+    window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; }, true);
 
-    // ---- 8. Tự động bypass ad gate (khi đến bước 2) ----
+    // ===== 6. TỰ ĐỘNG BYPASS AD GATE (khi đến bước 2) =====
     function bypassAdGate() {
         const gate = document.getElementById('adGate');
         if (!gate || gate.classList.contains('hidden')) return;
@@ -116,15 +77,10 @@
         }
     }
 
-    // Bắt đầu theo dõi khi DOM sẵn sàng
     window.addEventListener('DOMContentLoaded', () => {
         const obs = new MutationObserver(bypassAdGate);
-        obs.observe(document.body, {
-            childList: true, subtree: true, attributes: true, attributeFilter: ['class']
-        });
-        // Gọi ngay nếu ad gate đã có
-        setTimeout(bypassAdGate, 200);
-        setTimeout(bypassAdGate, 600);
+        obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        setTimeout(bypassAdGate, 300);
+        setTimeout(bypassAdGate, 900);
     });
-
 })();
