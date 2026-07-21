@@ -1,26 +1,26 @@
 // ==UserScript==
-// @name         NetCheat - Single Key Generator (Intercept shorten.php)
-// @namespace    http://tampermonkey.net/
-// @version      19.0
-// @description  Chọn app, nhấn nút tạo 1 key, tự động điền form, bắt request shorten.php để lấy key.
-// @author       You
-// @match        *://techdavisk.click/*
-// @grant        none
-// @run-at       document-start
+@name         NetCheat - Single Key Generator (Intercept shorten.php)
+@namespace    http://tampermonkey.net/
+@version      18.0
+@description  Chọn ứng dụng, nhấn nút tạo 1 key, bắt request shorten.php lấy key. Chỉ cần giải captcha.
+@author       You
+@match        *://techdavisk.click/*
+@grant        none
+@run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // Ánh xạ app -> prefix (để hiển thị, không cần tạo key thủ công)
+    // Ánh xạ app
     const APP_MAP = {
         netcheat: 'NetCheat',
         netplus: 'NetPlus',
-        panelpc: 'PanelPC',
-        fakelagpc: 'FakeLagPC'
+        panelpc: 'Panel PC',
+        fakelagpc: 'Fake Lag PC'
     };
 
-    let pendingKeyResolve = null;
+    let pendingKeyResolve = null; // resolve khi bắt được key
     let currentKey = '';
 
     // ===== GHI ĐÈ XMLHttpRequest ĐỂ BẮT shorten.php =====
@@ -34,19 +34,17 @@
 
     XMLHttpRequest.prototype.send = function(body) {
         if (this._url && this._url.includes('shorten.php')) {
-            try {
-                const urlObj = new URL(this._url, window.location.origin);
-                const targetParam = urlObj.searchParams.get('url');
-                if (targetParam) {
-                    const targetUrl = decodeURIComponent(targetParam);
-                    const targetParams = new URL(targetUrl).searchParams;
-                    const key = targetParams.get('key');
-                    if (key && pendingKeyResolve) {
-                        pendingKeyResolve(key);
-                        pendingKeyResolve = null;
-                    }
+            const urlObj = new URL(this._url, window.location.origin);
+            const targetParam = urlObj.searchParams.get('url');
+            if (targetParam) {
+                const targetUrl = decodeURIComponent(targetParam);
+                const targetParams = new URL(targetUrl).searchParams;
+                const key = targetParams.get('key');
+                if (key && pendingKeyResolve) {
+                    pendingKeyResolve(key);
+                    pendingKeyResolve = null;
                 }
-            } catch (e) {}
+            }
         }
         return origSend.call(this, body);
     };
@@ -96,7 +94,7 @@
         captchaBtn.onclick = continueAfterCaptcha;
         document.body.appendChild(captchaBtn);
 
-        // Sự kiện panel
+        // Sự kiện
         document.getElementById('close-panel').onclick = () => panel.style.display = 'none';
         document.getElementById('generate-btn').onclick = startGenerate;
         document.getElementById('copy-one-btn').onclick = () => {
@@ -111,13 +109,6 @@
     function prepareAndCreate(app) {
         return new Promise((resolve, reject) => {
             if (typeof showAppSelect !== 'function') return reject('Không tìm thấy hàm showAppSelect');
-
-            // Đảm bảo đóng các dialog cũ nếu có
-            if (typeof closeAppSelect === 'function') closeAppSelect();
-            if (typeof closeExpirySelect === 'function') closeExpirySelect();
-            if (typeof closeShortenerSelect === 'function') closeShortenerSelect();
-            if (typeof closeLinkDialog === 'function') closeLinkDialog();
-
             showAppSelect();
 
             setTimeout(() => {
