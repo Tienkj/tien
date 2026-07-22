@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Astutech FF - bypass automatic (Mobile OK)
+// @name         Astutech FF - bypass automatic
 // @namespace    http://tampermonkey.net/
 // @version      17.0
 // @description  Tự động click qua nhiều ad gate, chặn redirect, nhập ID, lấy key. Hỗ trợ mobile.
