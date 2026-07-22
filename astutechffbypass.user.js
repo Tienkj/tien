@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         Astutech FF - Bypass Automatic
+// @name         Astutech FF - bypass automatic (Mobile OK)
 // @namespace    http://tampermonkey.net/
-// @version      16.0
-// @description  Tự động click qua nhiều ad gate, chặn redirect, nhập ID, lấy key.
+// @version      17.0
+// @description  Tự động click qua nhiều ad gate, chặn redirect, nhập ID, lấy key. Hỗ trợ mobile.
 // @author       X.Tien
 // @match        *://*.unlockffbeta.com/*
 // @match        *://unlockffbeta.com/*
-// @run-at       document-start
+// @run-at       document-idle
 // @grant        none
 // ==/UserScript==
 
@@ -56,24 +56,27 @@
     // ===== 3. CHẶN BEFOREUNLOAD =====
     window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; }, true);
 
-    // ===== 4. PANEL ĐẸP =====
+    // ===== 4. PANEL =====
     function createPanel() {
+     
+        if (document.getElementById('auto-panel')) return;
+
         const panel = document.createElement('div');
         panel.id = 'auto-panel';
+       
         panel.style.cssText = `
             position: fixed;
-            bottom: 25px;
-            right: 25px;
-            background: rgba(10, 10, 20, 0.9);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            bottom: 20px;
+            right: 20px;
+            background: rgba(10, 10, 20, 0.95);
             color: #fff;
-            border: 1px solid rgba(124, 120, 242, 0.25);
+            border: 1px solid rgba(124, 120, 242, 0.4);
             border-radius: 20px;
             padding: 20px 18px 16px;
-            z-index: 10000;
+            z-index: 99999;
             width: 280px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,120,242,0.1) inset, 0 0 30px rgba(124,120,242,0.1);
+            max-width: calc(100vw - 40px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,120,242,0.1) inset;
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             transition: all 0.3s ease;
         `;
@@ -83,7 +86,7 @@
                     <span style="font-size: 18px;">🔓</span>
                     <strong style="color: #f0f0ff; font-weight: 600; font-size: 15px; letter-spacing: 0.3px;">Astutech Auto</strong>
                 </div>
-                <button id="close-panel" style="background: rgba(255,255,255,0.05); border: none; color: #aaa; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; font-size: 14px;">✕</button>
+                <button id="close-panel" style="background: rgba(255,255,255,0.05); border: none; color: #aaa; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px;">✕</button>
             </div>
 
             <div style="margin-bottom: 14px;">
@@ -93,7 +96,7 @@
                         width: 100%;
                         padding: 11px 14px;
                         background: rgba(255,255,255,0.05);
-                        border: 1px solid rgba(255,255,255,0.1);
+                        border: 1px solid rgba(255,255,255,0.15);
                         border-radius: 12px;
                         color: #fff;
                         font-size: 14px;
@@ -102,7 +105,6 @@
                         box-sizing: border-box;
                         font-family: inherit;
                     ">
-                    <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #555; font-size: 12px;">🎲</span>
                 </div>
             </div>
 
@@ -130,20 +132,17 @@
                 <div id="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></div>
                 <div id="status-text" style="font-size: 12px; color: #ccc; font-weight: 500;">Sẵn sàng</div>
             </div>
-
-            <div style="position: absolute; top: 10px; left: 15px; width: 50px; height: 50px; background: radial-gradient(circle, rgba(124,120,242,0.15) 0%, transparent 70%); border-radius: 50%; pointer-events: none;"></div>
-            <div style="position: absolute; bottom: 15px; right: 15px; width: 60px; height: 60px; background: radial-gradient(circle, rgba(157,123,246,0.1) 0%, transparent 70%); border-radius: 50%; pointer-events: none;"></div>
         `;
         document.body.appendChild(panel);
 
-       
+      
         document.getElementById('close-panel').addEventListener('click', () => {
             panel.style.opacity = '0';
             panel.style.transform = 'scale(0.95)';
             setTimeout(() => panel.remove(), 200);
         });
 
-    
+      
         const closeBtn = document.getElementById('close-panel');
         closeBtn.addEventListener('mouseenter', () => {
             closeBtn.style.background = 'rgba(255,255,255,0.1)';
@@ -154,18 +153,18 @@
             closeBtn.style.color = '#aaa';
         });
 
-        
+      
         const input = document.getElementById('custom-id');
         input.addEventListener('focus', () => {
             input.style.borderColor = 'rgba(124,120,242,0.5)';
             input.style.boxShadow = '0 0 0 3px rgba(124,120,242,0.1)';
         });
         input.addEventListener('blur', () => {
-            input.style.borderColor = 'rgba(255,255,255,0.1)';
+            input.style.borderColor = 'rgba(255,255,255,0.15)';
             input.style.boxShadow = 'none';
         });
 
-      
+       
         document.getElementById('start-auto-btn').addEventListener('click', startAuto);
     }
 
@@ -191,7 +190,7 @@
         const gate = document.getElementById('adGate');
         if (!gate || gate.classList.contains('hidden')) return false; 
 
-
+      
         const openAdBtn = document.getElementById('adGateOpen');
         if (openAdBtn && !openAdBtn.disabled) {
             openAdBtn.click();
@@ -215,7 +214,6 @@
             }
         }
 
-    
         const continueBtn = document.getElementById('adGateContinue');
         if (continueBtn && !continueBtn.disabled) {
             continueBtn.click();
@@ -235,8 +233,6 @@
             const step2 = document.getElementById('step2');
             const step3 = document.getElementById('step3');
             const gate = document.getElementById('adGate');
-
-         
             if (step3 && !step3.classList.contains('hidden')) {
                 clearInterval(mainInterval);
                 updateStatus('✅ Key đã hiển thị!');
@@ -244,7 +240,7 @@
                 return;
             }
 
-        
+           
             if (currentStep === 0 && step0 && !step0.classList.contains('hidden')) {
                 const guestBtn = document.getElementById('btnGuest');
                 if (guestBtn && !guestBtn.disabled) {
@@ -255,8 +251,6 @@
                 }
                 return;
             }
-
-         
             if (currentStep === 1 && step1 && !step1.classList.contains('hidden')) {
                 const input = document.getElementById('acctInput');
                 const btnStart = document.getElementById('btnStart');
@@ -272,15 +266,14 @@
                 return;
             }
 
-          
+           
             if (currentStep === 2 && step2 && !step2.classList.contains('hidden')) {
-                // Nếu có ad gate -> xử lý
                 if (gate && !gate.classList.contains('hidden')) {
                     handleAdGate();
                     return;
                 }
 
-          
+   
                 const btnNext = document.getElementById('btnNext');
                 if (btnNext && !btnNext.disabled) {
                     btnNext.click();
@@ -289,12 +282,12 @@
                     return;
                 }
 
-            
+              
                 updateStatus('Đang chờ ad gate...');
                 return;
             }
 
-      
+            // Nếu currentStep = 2 và step3 đã hiện (dự phòng)
             if (currentStep === 2 && step3 && !step3.classList.contains('hidden')) {
                 clearInterval(mainInterval);
                 updateStatus('✅ Key đã hiển thị!');
@@ -308,7 +301,19 @@
     }
 
     // ===== 6. KHỞI ĐỘNG =====
-    window.addEventListener('DOMContentLoaded', () => {
-        setTimeout(createPanel, 500);
-    });
+    function init() {
+        if (document.body) {
+            createPanel();
+        } else {
+            setTimeout(init, 300);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(init, 500);
+        });
+    } else {
+        setTimeout(init, 500);
+    }
 })();
