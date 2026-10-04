@@ -1837,7 +1837,7 @@ def frame():
 
 
 def main():
-    load_config()a
+    load_config()
     while frame():
         pass
     if G.net:
