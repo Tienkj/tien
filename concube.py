@@ -1,11 +1,9 @@
-import argparse
 import json
 import math
 import os
 import queue
 import random
 import socket
-import sys
 import threading
 import time
 
@@ -13,12 +11,8 @@ import numpy as np
 import pygame
 
 
-SERVER_ADDR = "tienkjaz.duckdns.org:5555"    
+SERVER_ADDR = "tienkjaz.duckdns.org:5555"
 
-
-# ==========================================================
-# KHỞI TẠO
-# ==========================================================
 pygame.mixer.pre_init(44100, -16, 2, 512)
 pygame.init()
 try:
@@ -32,6 +26,14 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Đại Chiến Không Gian - Online")
 clock = pygame.time.Clock()
 
+
+try:
+    pygame.key.start_text_input()
+    pygame.key.set_text_input_rect(pygame.Rect(0, HEIGHT // 2, WIDTH, 40))
+except Exception:
+    pass
+
+
 CONFIG_FILE = "client_config.json"
 DEFAULT_PORT = 5555
 MAX_LEVELS = 100
@@ -42,6 +44,8 @@ MAX_HP = 5
 TMP_FRAMES = 600
 MAX_BULLET_SPEED = 25
 VALID_BULLETS = (1, 2, 3, 4, 5, 10)
+CHAT_KEEP = 120
+FIELD_MAX = {"user": 16, "pass": 32, "friend": 16, "chat": 200}
 
 
 def clamp(v, lo, hi):
@@ -60,59 +64,60 @@ class NullSound:
     def set_volume(self, v): pass
 
 
-def generate_sound(wave_type="sine", freq=440, duration=0.1, fade_out=True, freq_slide=0):
+def gen_sound(wave_type="sine", freq=440, dur=0.1, fade=True, slide=0):
     if not AUDIO:
         return NullSound()
-    n = max(1, int(SAMPLE_RATE * duration))
-    t = np.linspace(0, duration, n, False)
-    f = freq + freq_slide * t
+    n = max(1, int(SAMPLE_RATE * dur))
+    t = np.linspace(0, dur, n, False)
+    f = freq + slide * t
     if wave_type == "square":
-        wave = np.sign(np.sin(2 * np.pi * f * t))
+        w = np.sign(np.sin(2 * np.pi * f * t))
     elif wave_type == "saw":
-        wave = 2 * (f * t - np.floor(0.5 + f * t))
+        w = 2 * (f * t - np.floor(0.5 + f * t))
     elif wave_type == "noise":
-        wave = np.random.uniform(-1, 1, n)
+        w = np.random.uniform(-1, 1, n)
     else:
-        wave = np.sin(2 * np.pi * f * t)
-    if fade_out:
+        w = np.sin(2 * np.pi * f * t)
+    if fade:
         fl = int(n * 0.8)
         if fl > 0:
             env = np.ones(n)
             env[-fl:] = np.linspace(1, 0, fl)
-            wave = wave * env
-    audio = (wave * 12000).astype(np.int16)
-    return pygame.sndarray.make_sound(np.ascontiguousarray(np.column_stack((audio, audio))))
+            w = w * env
+    a = (w * 12000).astype(np.int16)
+    return pygame.sndarray.make_sound(np.ascontiguousarray(np.column_stack((a, a))))
 
 
-def generate_music_track(pattern, speed=0.15):
+def gen_music(pattern, speed=0.15):
     if not AUDIO:
         return NullSound()
     parts = []
-    for freq in pattern:
+    for fr in pattern:
         n = max(1, int(SAMPLE_RATE * speed))
-        if freq == 0:
+        if fr == 0:
             parts.append(np.zeros((n, 2), dtype=np.int16))
         else:
             t = np.linspace(0, speed, n, False)
-            wave = 0.4 * np.sin(2 * np.pi * freq * t) + 0.2 * np.sign(np.sin(2 * np.pi * (freq / 2) * t))
+            w = 0.4 * np.sin(2 * np.pi * fr * t) + 0.2 * np.sign(np.sin(2 * np.pi * (fr / 2) * t))
             env = np.linspace(1, 0.2, len(t))
-            a = (wave * env * 6000).astype(np.int16)
+            a = (w * env * 6000).astype(np.int16)
             parts.append(np.column_stack((a, a)))
     return pygame.sndarray.make_sound(np.ascontiguousarray(np.concatenate(parts, axis=0)))
 
 
 SFX = {
-    "l1": generate_sound("saw", 600, 0.08, freq_slide=-3000),
-    "l2": generate_sound("square", 800, 0.1, freq_slide=-4000),
-    "l3": generate_sound("saw", 1100, 0.12, freq_slide=-5000),
-    "l4": generate_sound("noise", 1500, 0.15, freq_slide=-6000),
-    "explosion": generate_sound("noise", 200, 0.25),
-    "powerup": generate_sound("sine", 523, 0.2, freq_slide=2000),
-    "levelup": generate_sound("square", 440, 0.4, freq_slide=1200),
+    "l1": gen_sound("saw", 600, 0.08, slide=-3000),
+    "l2": gen_sound("square", 800, 0.1, slide=-4000),
+    "l3": gen_sound("saw", 1100, 0.12, slide=-5000),
+    "l4": gen_sound("noise", 1500, 0.15, slide=-6000),
+    "explosion": gen_sound("noise", 200, 0.25),
+    "powerup": gen_sound("sine", 523, 0.2, slide=2000),
+    "levelup": gen_sound("square", 440, 0.4, slide=1200),
+    "chat": gen_sound("sine", 880, 0.08, slide=400),
 }
 BGM = {
-    "MENU": generate_music_track([261, 329, 392, 523, 392, 329, 261, 0, 220, 277, 329, 440, 329, 277], 0.18),
-    "GAME": generate_music_track([150, 150, 300, 150, 150, 350, 150, 150, 400, 350, 300, 200], 0.11),
+    "MENU": gen_music([261, 329, 392, 523, 392, 329, 261, 0, 220, 277, 329, 440, 329, 277], 0.18),
+    "GAME": gen_music([150, 150, 300, 150, 150, 350, 150, 150, 400, 350, 300, 200], 0.11),
 }
 for _s in BGM.values():
     _s.set_volume(0.5)
@@ -150,7 +155,7 @@ F_TINY = load_font(11)
 
 
 # ==========================================================
-# DỮ LIỆU CỐ ĐỊNH
+# DỮ LIỆU
 # ==========================================================
 DIFFS = {
     "EASY": {"name": "DỄ", "speed_mod": 0.7, "spawn_mod": 1.4, "coin_mod": 1.0, "color": (0, 255, 170)},
@@ -159,30 +164,29 @@ DIFFS = {
 }
 SKINS = {
     1: {"name": "Galaga Classic", "primary": (255, 255, 255), "wing": (200, 30, 30), "price": 0,
-        "desc": "Phi thuyền tiêm kích 2D truyền thống."},
+        "desc": "Phi thuyền cổ điển."},
     2: {"name": "Neon Fighter", "primary": (0, 255, 200), "wing": (0, 150, 255), "price": 150,
-        "desc": "Giao diện Lazer phát sáng."},
+        "desc": "Lazer phát sáng."},
     3: {"name": "Chiến Hạm Vàng", "primary": (255, 215, 0), "wing": (255, 120, 0), "price": 300,
-        "desc": "Giáp mạ vàng Arcade."},
+        "desc": "Giáp mạ vàng."},
     4: {"name": "Phượng Hoàng Lửa", "primary": (255, 50, 50), "wing": (255, 200, 0), "price": 500,
-        "desc": "Tối đa hỏa lực bắn ruồi."},
+        "desc": "Hỏa lực tối đa."},
 }
 WEAPONS = [
-    {"type": 2, "name": "Đạn Đôi", "cost": 150, "desc": "Bắn 2 tia đạn song song"},
-    {"type": 3, "name": "Đạn Ba", "cost": 300, "desc": "Bắn 3 tia hỏa lực thẳng"},
-    {"type": 4, "name": "Đạn Bốn Tỏa", "cost": 500, "desc": "4 tia đạn tỏa góc rộng"},
-    {"type": 5, "name": "Đạn Cánh Bướm (5 Tỏa)", "cost": 800, "desc": "5 tia đạn tỏa đều 5 hướng"},
-    {"type": 10, "name": "Bão Đạn (10 Tỏa)", "cost": 1500, "desc": "Sức mạnh tối thượng tỏa 10 hướng"},
-    {"type": -1, "name": "Tăng Tốc Đạn (+4)", "cost": 100, "desc": "Gia tăng tốc độ đạn bay"},
+    {"type": 2, "name": "Đạn Đôi", "cost": 150, "desc": "2 tia song song"},
+    {"type": 3, "name": "Đạn Ba", "cost": 300, "desc": "3 tia thẳng"},
+    {"type": 4, "name": "Đạn Bốn Tỏa", "cost": 500, "desc": "4 tia góc rộng"},
+    {"type": 5, "name": "Cánh Bướm (5)", "cost": 800, "desc": "5 tia đều"},
+    {"type": 10, "name": "Bão Đạn (10)", "cost": 1500, "desc": "10 hướng"},
+    {"type": -1, "name": "Tăng Tốc Đạn (+4)", "cost": 100, "desc": "+4 tốc độ"},
 ]
 POWERUP_COLORS = {"HP": (0, 255, 100), "DOUBLE": (0, 200, 255), "TRIPLE": (255, 200, 0), "HEXA": (255, 50, 200)}
 POWERUP_LABELS = {"HP": "HP", "DOUBLE": "2X", "TRIPLE": "3X", "HEXA": "5X"}
 POWERUP_WEAPON = {"DOUBLE": 2, "TRIPLE": 3, "HEXA": 5}
-FIELD_MAX = {"user": 16, "pass": 32, "friend": 16}
 
 
 # ==========================================================
-# TRẠNG THÁI CHUNG
+# STATE
 # ==========================================================
 class G:
     state = "SPLASH"
@@ -194,16 +198,13 @@ class G:
     net = None
     user = None
     conn_lost = False
-    # đăng nhập
     auth_mode = "LOGIN"
     connecting = False
     auth_msg = ""
     auth_color = (255, 80, 80)
     focus = None
-    # menu
     difficulty = "NORMAL"
     popup = False
-    # xã hội
     friends = {"me_score": 0, "friends": [], "requests": []}
     board = {"top": [], "rank": 0, "total": 0}
     board_tab = "FRIENDS"
@@ -211,27 +212,31 @@ class G:
     invite = None
     in_room = False
     partner = ""
-    # ván chơi
     W = None
     mode = "solo"
     credited = 0
     submitted = False
     got_snapshot = False
-    # thông báo nổi
     toast_msg = ""
     toast_color = (0, 255, 150)
     toast_until = 0
-    # lưu / nhịp tim / làm mới
     save_dirty = False
     last_save = 0.0
     last_ping = 0.0
     last_refresh = 0.0
     input_hook = None
+    # chat
+    chat_tab = "GLOBAL"
+    chat_global = []
+    chat_private = {}
+    chat_target = None
+    chat_unread = {}
+    chat_badge_global = 0
+    chat_scroll = 0
 
 
 P = {"coins": 500, "unlocked": {1}, "skin": 1, "bt": 1, "bs": 13, "hs": 0}
-fields = {"user": "", "pass": "", "friend": ""}
-
+fields = {"user": "", "pass": "", "friend": "", "chat": ""}
 hits, prev_hits = [], []
 particles, thrusters = [], []
 
@@ -243,7 +248,6 @@ def toast(msg, ok=True, secs=3.0):
 
 
 def load_config():
-    """Chỉ load username — server giờ hardcode trong code."""
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -261,7 +265,7 @@ def save_config():
 
 
 # ==========================================================
-# MẠNG
+# NETWORK
 # ==========================================================
 class Net:
     def __init__(self):
@@ -280,7 +284,7 @@ class Net:
             s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except OSError as e:
             self.closed = True
-            self.q.put({"t": "_error", "msg": "Không kết nối được tới %s:%s (%s)" % (host, port, e.strerror or e)})
+            self.q.put({"t": "_error", "msg": "Không kết nối tới %s:%s (%s)" % (host, port, e.strerror or e)})
             return
         self.sock = s
         threading.Thread(target=self._writer, daemon=True).start()
@@ -334,15 +338,27 @@ def net_send(msg):
 
 
 def parse_server(text):
-    """Vẫn giữ để phòng khi cần parse — nhưng giờ dùng SERVER_ADDR."""
     text = text.strip()
     if not text:
         raise ValueError("Địa chỉ server trống!")
+    if text.startswith("["):
+        end = text.find("]")
+        if end == -1:
+            raise ValueError("IPv6 thiếu ']'!")
+        host = text[1:end]
+        rest = text[end + 1:]
+        port = DEFAULT_PORT
+        if rest.startswith(":"):
+            p = rest[1:]
+            if not p.isdigit() or not (0 < int(p) < 65536):
+                raise ValueError("Port không hợp lệ!")
+            port = int(p)
+        return host, port
     host, port = text, DEFAULT_PORT
     if ":" in text:
         host, p = text.rsplit(":", 1)
         if not p.isdigit() or not (0 < int(p) < 65536):
-            raise ValueError("Cổng (port) không hợp lệ!")
+            raise ValueError("Port không hợp lệ!")
         port = int(p)
     if not host:
         raise ValueError("Địa chỉ server không hợp lệ!")
@@ -354,7 +370,7 @@ def submit_auth():
         return
     user, pw = fields["user"].strip(), fields["pass"]
     if not user or not pw:
-        G.auth_msg, G.auth_color = "Vui lòng nhập đầy đủ Tên & Mật khẩu!", (255, 80, 80)
+        G.auth_msg, G.auth_color = "Nhập đầy đủ Tên & Mật khẩu!", (255, 80, 80)
         return
     try:
         host, port = parse_server(SERVER_ADDR)
@@ -399,9 +415,20 @@ def go_login(msg=""):
     G.invite = None
     G.connecting = False
     G.popup = False
+    G.chat_global.clear()
+    G.chat_private.clear()
+    G.chat_unread.clear()
+    G.chat_target = None
+    G.chat_badge_global = 0
     G.auth_msg, G.auth_color = msg, (255, 80, 80)
     fields["pass"] = ""
     set_state("LOGIN")
+
+
+def _push_chat(bucket, entry):
+    bucket.append(entry)
+    if len(bucket) > CHAT_KEEP:
+        del bucket[:-CHAT_KEEP]
 
 
 def handle_net(m):
@@ -453,6 +480,35 @@ def handle_net(m):
         handle_room_msg(m.get("d") or {})
     elif t == "room_end":
         handle_room_end()
+    elif t == "chat_history":
+        G.chat_global.clear()
+        for e in m.get("global", []):
+            G.chat_global.append({"from": e.get("from", "?"), "msg": e.get("msg", ""), "ts": e.get("ts", 0)})
+    elif t == "chat":
+        scope = m.get("scope")
+        if scope == "global":
+            e = {"from": m.get("from", "?"), "msg": m.get("msg", ""), "ts": time.time()}
+            _push_chat(G.chat_global, e)
+            if G.state == "CHAT" and G.chat_tab == "GLOBAL":
+                snd("chat")
+                G.chat_scroll = 0
+            elif m.get("from") != G.user:
+                G.chat_badge_global += 1
+                toast("[Tổng] %s: %s" % (e["from"][:12], e["msg"][:40]), True, 3.0)
+        elif scope == "private":
+            other = m.get("to") if m.get("echo") else m.get("from")
+            if other is None:
+                return
+            e = {"from": m.get("from", "?"), "msg": m.get("msg", ""), "ts": time.time()}
+            _push_chat(G.chat_private.setdefault(other, []), e)
+            if not m.get("echo"):
+                if not (G.state == "CHAT" and G.chat_tab == "PRIVATE" and G.chat_target == other):
+                    G.chat_unread[other] = G.chat_unread.get(other, 0) + 1
+                    snd("chat")
+                    toast("[%s] %s" % (other[:12], e["msg"][:40]), True, 3.0)
+                else:
+                    snd("chat")
+                    G.chat_scroll = 0
 
 
 def pump_net():
@@ -517,7 +573,7 @@ def update_draw_thrusters():
 
 
 # ==========================================================
-# THẾ GIỚI GAME
+# GAME WORLD
 # ==========================================================
 class Player:
     def __init__(self, name, skin, bt=1, bs=13, x=0, y=0):
@@ -783,7 +839,7 @@ class World:
 
 
 # ==========================================================
-# VẼ NHÂN VẬT
+# VẼ
 # ==========================================================
 _ship_cache = {}
 
@@ -804,12 +860,8 @@ def ship_surface(skin_id):
     return _ship_cache[skin_id]
 
 
-def draw_ship(x, y, skin_id, alpha=255):
-    s = ship_surface(skin_id)
-    if alpha < 255:
-        s = s.copy()
-        s.set_alpha(alpha)
-    screen.blit(s, (int(x), int(y)))
+def draw_ship(x, y, skin_id):
+    screen.blit(ship_surface(skin_id), (int(x), int(y)))
 
 
 def draw_enemy(x, y, e_type, seed):
@@ -821,8 +873,6 @@ def draw_enemy(x, y, e_type, seed):
         pygame.draw.ellipse(s, (200, 220, 255, 200), (w - 14, int(8 + wing), 14, 18))
         pygame.draw.ellipse(s, (230, 30, 50), (8, 6, 22, 28))
         pygame.draw.circle(s, (255, 200, 0), (19, 8), 5)
-        pygame.draw.circle(s, (255, 255, 255), (15, 6), 2)
-        pygame.draw.circle(s, (255, 255, 255), (23, 6), 2)
     else:
         pygame.draw.ellipse(s, (255, 255, 200, 200), (2, int(4 - wing), 12, 15))
         pygame.draw.ellipse(s, (255, 255, 200, 200), (w - 14, int(4 - wing), 12, 15))
@@ -888,7 +938,7 @@ def draw_bullet_preview(x, y, b_type, width=80, height=55):
 
 
 # ==========================================================
-# TIỆN ÍCH UI
+# UI helpers
 # ==========================================================
 def T(txt, font, color, x, y, anchor="topleft"):
     s = font.render(str(txt), True, color)
@@ -948,11 +998,20 @@ def set_state(s):
     G.state = s
     G.popup = False
     G.scroll = 0
-    G.focus = {"LOGIN": "user" if not fields["user"] else "pass", "FRIENDS": "friend"}.get(s)
+    G.chat_scroll = 0
+    G.focus = {"LOGIN": "user" if not fields["user"] else "pass",
+               "FRIENDS": "friend",
+               "CHAT": "chat"}.get(s)
     if s in ("FRIENDS", "BOARD"):
         refresh_social()
     elif s == "MENU":
         net_send({"t": "friends_get"})
+    elif s == "CHAT":
+        if G.chat_tab == "GLOBAL":
+            G.chat_badge_global = 0
+        elif G.chat_target:
+            G.chat_unread[G.chat_target] = 0
+        fields["chat"] = ""
 
 
 def back_button(label="QUAY LẠI MENU", y=None):
@@ -1002,7 +1061,7 @@ def buy_weapon(item):
 def add_friend():
     name = fields["friend"].strip()
     if not name:
-        return toast("Vui lòng nhập tên tài khoản!", False)
+        return toast("Nhập tên tài khoản!", False)
     net_send({"t": "friend_add", "name": name})
     fields["friend"] = ""
 
@@ -1038,6 +1097,22 @@ def quit_game():
 def toggle_sound():
     G.sound_on = not G.sound_on
     apply_sound_setting()
+
+
+def send_chat():
+    text = fields["chat"].strip()
+    if not text:
+        return
+    text = text[:FIELD_MAX["chat"]]
+    if G.chat_tab == "GLOBAL":
+        net_send({"t": "chat_global", "msg": text})
+    else:
+        if not G.chat_target:
+            return toast("Chọn bạn để chat!", False)
+        net_send({"t": "chat_private", "to": G.chat_target, "msg": text})
+    fields["chat"] = ""
+    G.focus = "chat"
+    G.chat_scroll = 0
 
 
 # ==========================================================
@@ -1078,7 +1153,7 @@ def start_coop(role, partner):
     guest.inv = 120
     host.inv = 60
     begin_match(World(G.difficulty, [host, guest], True), role)
-    toast("Vào phòng chơi đôi với %s!" % partner)
+    toast("Vào phòng với %s!" % partner)
 
 
 def leave_match():
@@ -1203,8 +1278,17 @@ def update_play():
 
 
 # ==========================================================
-# VẼ TỪNG MÀN HÌNH
+# VẼ MÀN HÌNH
 # ==========================================================
+STARS = []
+for _ in range(120):
+    _l = random.choices([1, 2, 3], weights=[0.6, 0.3, 0.1])[0]
+    STARS.append([random.randint(0, WIDTH), random.randint(0, HEIGHT), _l, _l * 1.5, random.randint(150, 255)])
+
+SPLASH_FRAMES = 150
+menu_rocket = {"x": -100.0, "y": HEIGHT // 2 - 20.0, "vx": 6.0, "vy": -1.2}
+
+
 def draw_stars():
     screen.fill((8, 10, 22))
     for st in STARS:
@@ -1215,17 +1299,7 @@ def draw_stars():
         pygame.draw.circle(screen, (b, b, min(255, b + 50)), (int(st[0]), int(st[1])), st[2])
 
 
-STARS = []
-for _ in range(120):
-    _l = random.choices([1, 2, 3], weights=[0.6, 0.3, 0.1])[0]
-    STARS.append([random.randint(0, WIDTH), random.randint(0, HEIGHT), _l, _l * 1.5, random.randint(150, 255)])
-
-SPLASH_FRAMES = 150
-menu_rocket = {"x": -100.0, "y": HEIGHT // 2 - 20.0, "vx": 6.0, "vy": -1.2}
-
-
 def draw_splash():
-    """Splash kiểu 'Made with Unity' — hexagon logo."""
     G.splash += 1
     t = G.splash
     screen.fill((18, 18, 22))
@@ -1242,13 +1316,11 @@ def draw_splash():
     r_inner = int(20 * scale)
 
     layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-
     pts_outer, pts_inner = [], []
     for i in range(6):
         angle = math.radians(i * 60 - 30)
         pts_outer.append((cx + r_outer * math.cos(angle), cy + r_outer * math.sin(angle)))
         pts_inner.append((cx + r_inner * math.cos(angle), cy + r_inner * math.sin(angle)))
-
     pygame.draw.polygon(layer, (255, 255, 255, alpha), pts_outer, width=5)
     for i in range(3):
         idx = i * 2
@@ -1266,34 +1338,26 @@ def draw_splash():
     bar_w, bar_h = 280, 12
     bar_x = WIDTH // 2 - bar_w // 2
     bar_y = cy + r_outer + 100
-
     pygame.draw.rect(layer, (50, 55, 70, alpha), (bar_x, bar_y, bar_w, bar_h), border_radius=6)
-    fill_w = int(bar_w * prog)
-    if fill_w > 0:
-        pygame.draw.rect(layer, (0, 220, 255, alpha), (bar_x, bar_y, fill_w, bar_h), border_radius=6)
+    fw = int(bar_w * prog)
+    if fw > 0:
+        pygame.draw.rect(layer, (0, 220, 255, alpha), (bar_x, bar_y, fw, bar_h), border_radius=6)
     pygame.draw.rect(layer, (120, 130, 160, alpha), (bar_x, bar_y, bar_w, bar_h), width=2, border_radius=6)
-
     pct = F_SMALL.render("Đang tải... %d%%" % int(prog * 100), True, (200, 210, 230))
     pct.set_alpha(alpha)
     layer.blit(pct, (WIDTH // 2 - pct.get_width() // 2, bar_y + 18))
-
     screen.blit(layer, (0, 0))
     if t >= SPLASH_FRAMES:
         set_state("LOGIN")
 
 
 def draw_login():
-    """Màn hình đăng nhập — đã BỎ ô nhập server."""
     draw_card(pygame.Rect(40, 50, WIDTH - 80, 600))
-    title = "ĐĂNG NHẬP" if G.auth_mode == "LOGIN" else "ĐĂNG KÝ TÀI KHOẢN"
+    title = "ĐĂNG NHẬP" if G.auth_mode == "LOGIN" else "ĐĂNG KÝ"
     T(title, F_LARGE, (0, 255, 220), WIDTH // 2, 100, "midtop")
-    T("Kết nối tới máy chủ để lưu tiến trình, kết bạn và chơi đôi", F_TINY, (150, 170, 200),
-      WIDTH // 2, 138, "midtop")
+    T("Server: %s" % SERVER_ADDR, F_TINY, (120, 200, 220), WIDTH // 2, 145, "midtop")
 
-    # Hiển thị server đang kết nối (chỉ để biết, không sửa được)
-    T("Server: %s" % SERVER_ADDR, F_TINY, (120, 200, 220), WIDTH // 2, 162, "midtop")
-
-    field(pygame.Rect(90, 200, WIDTH - 180, 40), "user", "Tên tài khoản (chữ, số, _ ; 3-16 ký tự):")
+    field(pygame.Rect(90, 200, WIDTH - 180, 40), "user", "Tên tài khoản (3-16 chữ/số/_):")
     field(pygame.Rect(90, 290, WIDTH - 180, 40), "pass", "Mật khẩu:", masked=True)
 
     label = "ĐĂNG NHẬP" if G.auth_mode == "LOGIN" else "TẠO TÀI KHOẢN"
@@ -1305,18 +1369,14 @@ def draw_login():
     def switch():
         G.auth_mode = "REGISTER" if G.auth_mode == "LOGIN" else "LOGIN"
         G.auth_msg = ""
-    sw = "Chưa có tài khoản? Đăng ký ngay" if G.auth_mode == "LOGIN" else "Đã có tài khoản? Đăng nhập"
+    sw = "Chưa có tài khoản? Đăng ký" if G.auth_mode == "LOGIN" else "Đã có? Đăng nhập"
     rect = pygame.Rect(90, 430, WIDTH - 180, 35)
     T(sw, F_SMALL, (0, 220, 255) if rect.collidepoint(G.mouse) else (150, 180, 220),
       rect.centerx, rect.centery, "center")
     click_area(rect, switch)
-
     if G.auth_msg:
         T(G.auth_msg, F_SMALL, G.auth_color, WIDTH // 2, 490, "midtop")
-
-    T("Phím TAB: đổi ô nhập  |  ENTER: xác nhận", F_TINY, (120, 135, 160), WIDTH // 2, 580, "midtop")
-    T("(Đổi địa chỉ server trong biến SERVER_ADDR ở đầu file game.py)", F_TINY, (110, 130, 150),
-      WIDTH // 2, 605, "midtop")
+    T("TAB đổi ô | ENTER xác nhận", F_TINY, (120, 135, 160), WIDTH // 2, 580, "midtop")
 
 
 def draw_menu_rocket():
@@ -1376,13 +1436,21 @@ def draw_menu():
     draw_ship(WIDTH // 2 - 25, HEIGHT // 2 - 15, P["skin"])
 
     nreq = len(G.friends["requests"])
-    button(pygame.Rect(WIDTH // 2 - 185, HEIGHT - 165, 175, 40), "Bạn Bè (%d)" % len(G.friends["friends"]),
+    total_unread = sum(G.chat_unread.values()) + G.chat_badge_global
+
+    button(pygame.Rect(20, HEIGHT - 165, 180, 40), "Bạn Bè (%d)" % len(G.friends["friends"]),
            lambda: set_state("FRIENDS"), border=(0, 220, 255))
     if nreq:
-        pygame.draw.circle(screen, (255, 60, 60), (WIDTH // 2 - 15, HEIGHT - 165), 11)
-        T(str(nreq), F_TINY, (255, 255, 255), WIDTH // 2 - 15, HEIGHT - 165, "center")
-    button(pygame.Rect(WIDTH // 2 + 10, HEIGHT - 165, 175, 40), "Bảng Xếp Hạng", lambda: set_state("BOARD"),
+        pygame.draw.circle(screen, (255, 60, 60), (190, HEIGHT - 165), 11)
+        T(str(nreq), F_TINY, (255, 255, 255), 190, HEIGHT - 165, "center")
+    button(pygame.Rect(210, HEIGHT - 165, 180, 40), "Xếp Hạng", lambda: set_state("BOARD"),
            border=(255, 215, 0), color=(255, 235, 150))
+    button(pygame.Rect(400, HEIGHT - 165, 180, 40), "Chat", lambda: set_state("CHAT"),
+           border=(200, 140, 255), color=(235, 200, 255))
+    if total_unread:
+        pygame.draw.circle(screen, (255, 60, 60), (570, HEIGHT - 165), 11)
+        T(str(min(total_unread, 99)), F_TINY, (255, 255, 255), 570, HEIGHT - 165, "center")
+
     button(pygame.Rect(30, HEIGHT - 100, 130, 45), "Shop Skin", lambda: set_state("SHOP_SKIN"),
            border=(120, 80, 160), color=(255, 180, 220))
 
@@ -1405,7 +1473,7 @@ def draw_menu():
         button(pygame.Rect(pop.x + 10, pop.y + 8, 155, 35), "Đổi Tài Khoản", logout, base=(30, 35, 60), font=F_SMALL)
         button(pygame.Rect(pop.x + 10, pop.y + 50, 155, 35), "Âm thanh: %s" % ("BẬT" if G.sound_on else "TẮT"),
                toggle_sound, base=(30, 35, 60), font=F_SMALL)
-        button(pygame.Rect(pop.x + 10, pop.y + 92, 155, 35), "Thoát Game", quit_game, base=(120, 30, 30),
+        button(pygame.Rect(pop.x + 10, pop.y + 92, 155, 35), "Thoát", quit_game, base=(120, 30, 30),
                hov=(200, 50, 50), border=(255, 100, 100), font=F_SMALL)
 
 
@@ -1420,15 +1488,15 @@ def draw_diff():
             set_state("MENU")
         button(pygame.Rect(70, 180 + i * 90, WIDTH - 140, 60), d["name"], pick, border=d["color"], color=d["color"],
                font=F_MED, bw=3 if k == G.difficulty else 2)
-        T("Tốc độ địch x%.1f | Xu thưởng x%.1f" % (d["speed_mod"], d["coin_mod"]), F_TINY, (150, 170, 200),
+        T("Tốc độ x%.1f | Xu x%.1f" % (d["speed_mod"], d["coin_mod"]), F_TINY, (150, 170, 200),
           WIDTH // 2, 180 + i * 90 + 48, "midtop")
     back_button(y=HEIGHT - 80)
 
 
 def draw_shop_weapon():
     draw_card(pygame.Rect(20, 20, WIDTH - 40, HEIGHT - 40), (0, 255, 200))
-    T("SHOP VŨ KHÍ HỎA LỰC", F_LARGE, (0, 255, 200), WIDTH // 2, 35, "midtop")
-    T("XU CÓ SẴN: %d" % P["coins"], F_MED, (255, 215, 0), WIDTH // 2, 72, "midtop")
+    T("SHOP VŨ KHÍ", F_LARGE, (0, 255, 200), WIDTH // 2, 35, "midtop")
+    T("XU: %d" % P["coins"], F_MED, (255, 215, 0), WIDTH // 2, 72, "midtop")
     for i, it in enumerate(WEAPONS):
         y = 110 + i * 72
         r = pygame.Rect(35, y, WIDTH - 170, 62)
@@ -1439,21 +1507,20 @@ def draw_shop_weapon():
         hv = r.collidepoint(G.mouse)
         pygame.draw.rect(screen, (40, 55, 80) if hv else (25, 35, 55), r, border_radius=10)
         pygame.draw.rect(screen, (0, 255, 200) if hv else col, r, width=2 if hv else 1, border_radius=10)
-        title = it["name"] + (" (ĐÃ CÓ)" if owned else " (TỐI ĐA)" if maxed else " - %d Xu" % it["cost"])
+        title = it["name"] + (" (ĐÃ CÓ)" if owned else " (MAX)" if maxed else " - %d Xu" % it["cost"])
         T(title, F_MED, col, 45, y + 10)
-        desc = it["desc"] + (" | hiện tại: %d" % P["bs"] if t == -1 else "")
-        T(desc, F_TINY, (170, 190, 210), 45, y + 36)
+        T(it["desc"], F_TINY, (170, 190, 210), 45, y + 36)
         draw_bullet_preview(WIDTH - 125, y, t, 80, 62)
         click_area(r, lambda item=it: buy_weapon(item))
-    button(pygame.Rect(50, HEIGHT - 110, WIDTH - 100, 40), "CHUYỂN SANG SHOP SKIN PHI THUYỀN",
+    button(pygame.Rect(50, HEIGHT - 110, WIDTH - 100, 40), "→ SHOP SKIN",
            lambda: set_state("SHOP_SKIN"), border=(255, 100, 200), color=(255, 180, 220))
     back_button()
 
 
 def draw_shop_skin():
     draw_card(pygame.Rect(20, 20, WIDTH - 40, HEIGHT - 40), (255, 100, 200))
-    T("SHOP SKIN PHI THUYỀN", F_LARGE, (255, 100, 200), WIDTH // 2, 35, "midtop")
-    T("XU CÓ SẴN: %d" % P["coins"], F_MED, (255, 215, 0), WIDTH // 2, 72, "midtop")
+    T("SHOP SKIN", F_LARGE, (255, 100, 200), WIDTH // 2, 35, "midtop")
+    T("XU: %d" % P["coins"], F_MED, (255, 215, 0), WIDTH // 2, 72, "midtop")
     for sid, sk in SKINS.items():
         y = 110 + (sid - 1) * 105
         r = pygame.Rect(40, y, WIDTH - 80, 95)
@@ -1464,30 +1531,30 @@ def draw_shop_skin():
         pygame.draw.rect(screen, (35, 40, 70) if hv else (20, 25, 45), r, border_radius=12)
         pygame.draw.rect(screen, border, r, width=3 if (active or hv) else 1, border_radius=12)
         draw_ship(WIDTH - 110, y + 22, sid)
-        status = "ĐANG CHỌN" if active else ("ĐÃ SỞ HỮU (CLICK ĐỂ CHỌN)" if owned else "GIÁ: %d XU" % sk["price"])
+        status = "ĐANG DÙNG" if active else ("SỞ HỮU - CLICK CHỌN" if owned else "GIÁ: %d XU" % sk["price"])
         T(sk["name"], F_MED, border, 55, y + 10)
         T(status, F_SMALL, (0, 255, 150) if owned else (255, 215, 0), 55, y + 36)
         T(sk["desc"], F_TINY, (170, 180, 200), 55, y + 62)
         click_area(r, lambda s=sid: buy_skin(s))
-    button(pygame.Rect(50, HEIGHT - 110, WIDTH - 100, 40), "CHUYỂN SANG SHOP VŨ KHÍ",
+    button(pygame.Rect(50, HEIGHT - 110, WIDTH - 100, 40), "→ SHOP VŨ KHÍ",
            lambda: set_state("SHOP_WEAPON"), border=(0, 255, 200), color=(180, 255, 220))
     back_button()
 
 
 def draw_profile():
     draw_card(pygame.Rect(40, 50, WIDTH - 80, HEIGHT - 100))
-    T("TRANG CÁ NHÂN", F_LARGE, (0, 255, 220), WIDTH // 2, 70, "midtop")
+    T("CÁ NHÂN", F_LARGE, (0, 255, 220), WIDTH // 2, 70, "midtop")
     pygame.draw.circle(screen, (0, 200, 255), (WIDTH // 2, 150), 35)
     pygame.draw.circle(screen, (255, 255, 255), (WIDTH // 2, 138), 14)
     T(G.user.upper(), F_LARGE, (255, 255, 255), WIDTH // 2, 195, "midtop")
     box = pygame.Rect(60, 245, WIDTH - 120, 290)
     draw_card(box, (0, 220, 255), (25, 35, 55, 200), 12)
     rank = G.board.get("rank") or "-"
-    rows = [("Tiền xu", str(P["coins"])), ("Kỷ lục cao nhất", str(P["hs"])),
-            ("Hạng trên server", "#%s / %s" % (rank, G.board.get("total", "-"))),
-            ("Skin đang dùng", SKINS[P["skin"]]["name"]), ("Cấp độ đạn", "Level %d" % P["bt"]),
+    rows = [("Tiền xu", str(P["coins"])), ("Kỷ lục", str(P["hs"])),
+            ("Hạng", "#%s / %s" % (rank, G.board.get("total", "-"))),
+            ("Skin", SKINS[P["skin"]]["name"]), ("Cấp đạn", "Lv %d" % P["bt"]),
             ("Tốc độ đạn", str(P["bs"])), ("Độ khó", DIFFS[G.difficulty]["name"]),
-            ("Số bạn bè", str(len(G.friends["friends"])))]
+            ("Bạn bè", str(len(G.friends["friends"])))]
     for i, (k, v) in enumerate(rows):
         T(k, F_SMALL, (170, 190, 220), 85, 262 + i * 33)
         T(v, F_SMALL, (255, 235, 150), WIDTH - 85, 262 + i * 33, "topright")
@@ -1496,23 +1563,23 @@ def draw_profile():
 
 def draw_friends():
     draw_card(pygame.Rect(30, 30, WIDTH - 60, HEIGHT - 60), (0, 200, 255))
-    T("BẠN BÈ & CHƠI ĐÔI", F_LARGE, (0, 255, 220), WIDTH // 2, 45, "midtop")
-    field(pygame.Rect(50, 112, 370, 40), "friend", "Thêm bạn bằng tên tài khoản:", hint="Nhập tên rồi bấm Gửi")
-    button(pygame.Rect(430, 112, 120, 40), "Gửi lời mời", add_friend, base=(0, 150, 100), hov=(0, 190, 130),
+    T("BẠN BÈ", F_LARGE, (0, 255, 220), WIDTH // 2, 45, "midtop")
+    field(pygame.Rect(50, 112, 370, 40), "friend", "Thêm bạn:", hint="Tên rồi Gửi")
+    button(pygame.Rect(430, 112, 120, 40), "Gửi", add_friend, base=(0, 150, 100), hov=(0, 190, 130),
            border=(0, 255, 160))
     reqs = G.friends["requests"]
     y = 170
-    T("Lời mời kết bạn (%d):" % len(reqs), F_SMALL, (255, 215, 0), 50, y)
+    T("Lời mời (%d):" % len(reqs), F_SMALL, (255, 215, 0), 50, y)
     y += 24
     if not reqs:
-        T("Không có lời mời nào.", F_TINY, (150, 160, 180), 65, y)
+        T("Không có.", F_TINY, (150, 160, 180), 65, y)
         y += 24
     else:
         for name in reqs[:3]:
             row = pygame.Rect(50, y, 500, 34)
             pygame.draw.rect(screen, (30, 40, 60), row, border_radius=6)
             T(name, F_SMALL, (255, 255, 255), 62, y + 17, "midleft")
-            button(pygame.Rect(row.right - 196, y + 3, 90, 28), "Đồng ý",
+            button(pygame.Rect(row.right - 196, y + 3, 90, 28), "OK",
                    lambda n=name: net_send({"t": "friend_accept", "name": n}),
                    base=(0, 150, 90), hov=(0, 190, 120), border=(0, 255, 150), font=F_TINY)
             button(pygame.Rect(row.right - 100, y + 3, 90, 28), "Từ chối",
@@ -1520,15 +1587,15 @@ def draw_friends():
                    base=(100, 35, 35), hov=(150, 50, 50), border=(255, 100, 100), font=F_TINY)
             y += 38
         if len(reqs) > 3:
-            T("... và %d lời mời khác" % (len(reqs) - 3), F_TINY, (150, 160, 180), 65, y)
+            T("... +%d nữa" % (len(reqs) - 3), F_TINY, (150, 160, 180), 65, y)
             y += 18
     y += 10
     fr = G.friends["friends"]
-    T("Danh sách bạn (%d) - kỷ lục & thách đấu:" % len(fr), F_SMALL, (0, 255, 150), 50, y)
+    T("Bạn (%d) - kỷ lục & chat & mời:" % len(fr), F_SMALL, (0, 255, 150), 50, y)
     y += 26
     area = pygame.Rect(50, y, 500, HEIGHT - 80 - y)
     if not fr:
-        T("Chưa có bạn bè nào. Hãy kết bạn ngay!", F_TINY, (150, 160, 180), 65, y + 4)
+        T("Chưa có bạn. Kết bạn ngay!", F_TINY, (150, 160, 180), 65, y + 4)
     else:
         row_h = 48
         G.scroll = clamp(G.scroll, 0, max(0, len(fr) * row_h - area.height))
@@ -1540,13 +1607,25 @@ def draw_friends():
                 continue
             pygame.draw.rect(screen, (20, 30, 50), row, border_radius=8)
             pygame.draw.rect(screen, (0, 150, 200), row, width=1, border_radius=8)
-            pygame.draw.circle(screen, (0, 230, 110) if f["online"] else (100, 105, 120), (row.x + 16, row.centery), 5)
+            pygame.draw.circle(screen, (0, 230, 110) if f["online"] else (100, 105, 120),
+                               (row.x + 16, row.centery), 5)
             T(f["name"], F_SMALL, (255, 255, 255), row.x + 30, row.centery, "midleft")
-            T("Kỷ lục: %d" % f["high_score"], F_SMALL, (255, 215, 0), row.x + 215, row.centery, "midleft")
-            btn = pygame.Rect(row.right - 108, row.y + 6, 100, 30)
+            T("%d" % f["high_score"], F_SMALL, (255, 215, 0), row.x + 175, row.centery, "midleft")
+
+            cbtn = pygame.Rect(row.right - 216, row.y + 6, 90, 30)
+
+            def open_pm(n=f["name"]):
+                G.chat_tab = "PRIVATE"
+                G.chat_target = n
+                G.chat_unread[n] = 0
+                set_state("CHAT")
+            button(cbtn, "Chat", open_pm, base=(40, 60, 110), hov=(60, 90, 150),
+                   border=(120, 180, 255), font=F_TINY, enabled=area.contains(cbtn))
+
+            btn = pygame.Rect(row.right - 118, row.y + 6, 110, 30)
             can = f["online"] and not G.in_room and area.contains(btn)
             if f["online"]:
-                button(btn, "Mời chơi đôi", lambda n=f["name"]: invite_friend(n),
+                button(btn, "Mời chơi", lambda n=f["name"]: invite_friend(n),
                        base=(60, 40, 110), hov=(90, 60, 150), border=(200, 140, 255), font=F_TINY, enabled=can)
             else:
                 T("Offline", F_TINY, (120, 125, 140), btn.centerx, btn.centery, "center")
@@ -1566,7 +1645,8 @@ def draw_board():
                base=(60, 50, 10) if sel else (25, 30, 50), border=(255, 215, 0) if sel else (90, 100, 130),
                color=(255, 235, 150) if sel else (170, 180, 200), font=F_MED)
     if G.board_tab == "FRIENDS":
-        rows = [(f["name"], f["high_score"]) for f in G.friends["friends"]] + [(G.user, max(P["hs"], G.friends["me_score"]))]
+        rows = [(f["name"], f["high_score"]) for f in G.friends["friends"]] + \
+               [(G.user, max(P["hs"], G.friends["me_score"]))]
         rows.sort(key=lambda r: (-r[1], r[0]))
     else:
         rows = [(r["name"], r["score"]) for r in G.board.get("top", [])]
@@ -1591,9 +1671,135 @@ def draw_board():
         T("%d" % sc, F_MED, (255, 215, 0), r.right - 15, r.centery, "midright")
     screen.set_clip(None)
     if G.board_tab == "SERVER" and G.board.get("rank"):
-        T("Hạng của bạn: #%d / %d người chơi" % (G.board["rank"], G.board["total"]), F_SMALL, (0, 255, 200),
+        T("Hạng: #%d / %d" % (G.board["rank"], G.board["total"]), F_SMALL, (0, 255, 200),
           WIDTH // 2, HEIGHT - 105, "midtop")
     back_button(y=HEIGHT - 70)
+
+
+def draw_chat():
+    draw_card(pygame.Rect(20, 20, WIDTH - 40, HEIGHT - 40), (0, 200, 255))
+    T("PHÒNG CHAT", F_LARGE, (0, 255, 220), WIDTH // 2, 30, "midtop")
+
+    for i, (key, lbl) in enumerate((("GLOBAL", "TỔNG"), ("PRIVATE", "RIÊNG"))):
+        sel = G.chat_tab == key
+        r = pygame.Rect(30 + i * 135, 68, 130, 32)
+
+        def switch(k=key):
+            G.chat_tab = k
+            G.chat_scroll = 0
+            if k == "GLOBAL":
+                G.chat_badge_global = 0
+            if k == "PRIVATE" and G.chat_target:
+                G.chat_unread[G.chat_target] = 0
+            G.focus = "chat"
+        button(r, lbl, switch,
+               base=(20, 60, 60) if sel else (25, 30, 50),
+               border=(0, 255, 200) if sel else (80, 100, 140),
+               color=(180, 255, 240) if sel else (170, 180, 200),
+               font=F_MED, bw=3 if sel else 2)
+        if key == "GLOBAL" and G.chat_badge_global:
+            pygame.draw.circle(screen, (255, 60, 60), (r.right - 8, r.top + 8), 9)
+            T(str(min(G.chat_badge_global, 99)), F_TINY, (255, 255, 255),
+              r.right - 8, r.top + 8, "center")
+
+    msg_top = 110
+    if G.chat_tab == "PRIVATE":
+        T("Chọn bạn:", F_TINY, (170, 190, 220), 32, msg_top - 2)
+        fr = G.friends["friends"]
+        if not fr:
+            T("Bạn chưa có bạn bè.", F_SMALL, (170, 180, 200), WIDTH // 2, 180, "midtop")
+        else:
+            bar_y = msg_top + 14
+            x = 32
+            for f in fr:
+                w = max(70, F_SMALL.size(f["name"])[0] + 22)
+                if x + w > WIDTH - 32:
+                    break
+                sel = G.chat_target == f["name"]
+                r = pygame.Rect(x, bar_y, w, 26)
+                hover = r.collidepoint(G.mouse)
+                bg = (0, 120, 90) if sel else ((45, 60, 90) if hover else (28, 38, 60))
+                bd = (0, 255, 180) if sel else (80, 120, 160)
+                pygame.draw.rect(screen, bg, r, border_radius=6)
+                pygame.draw.rect(screen, bd, r, width=1, border_radius=6)
+                T(f["name"], F_SMALL, (255, 255, 255), r.centerx, r.centery, "center")
+                un = G.chat_unread.get(f["name"], 0)
+                if un and not sel:
+                    pygame.draw.circle(screen, (255, 60, 60), (r.right - 4, r.top + 4), 8)
+                    T(str(min(un, 9)), F_TINY, (255, 255, 255), r.right - 4, r.top + 4, "center")
+
+                def pick(n=f["name"]):
+                    G.chat_target = n
+                    G.chat_unread[n] = 0
+                    G.chat_scroll = 0
+                click_area(r, pick)
+                x += w + 6
+            msg_top = bar_y + 34
+
+    area = pygame.Rect(30, msg_top, WIDTH - 60, HEIGHT - msg_top - 130)
+    pygame.draw.rect(screen, (10, 16, 28), area, border_radius=8)
+    pygame.draw.rect(screen, (0, 120, 160), area, width=1, border_radius=8)
+
+    if G.chat_tab == "GLOBAL":
+        msgs = G.chat_global
+    elif G.chat_target:
+        msgs = G.chat_private.get(G.chat_target, [])
+    else:
+        msgs = []
+
+    if not msgs:
+        if G.chat_tab == "GLOBAL":
+            T("Chưa có tin. Chào mọi người đi!", F_SMALL, (140, 155, 180),
+              WIDTH // 2, msg_top + 30, "midtop")
+        elif not G.chat_target:
+            T("Chọn bạn để chat.", F_SMALL, (140, 155, 180), WIDTH // 2, msg_top + 30, "midtop")
+        else:
+            T("Chưa có tin với %s." % G.chat_target, F_SMALL, (140, 155, 180),
+              WIDTH // 2, msg_top + 30, "midtop")
+
+    screen.set_clip(area)
+    line_h = 20
+    pad = 8
+    inner_w = area.width - 2 * pad - 4
+    rendered = []
+    for e in msgs:
+        who = e.get("from", "?")
+        text = e.get("msg", "")
+        prefix = "%s: " % who
+        max_chars = max(12, inner_w // 7)
+        words = text.split()
+        lines, cur = [], prefix
+        for w_ in words:
+            if len(cur) + len(w_) + 1 > max_chars:
+                lines.append(cur)
+                cur = "    " + w_
+            else:
+                cur = cur + (" " if cur and not cur.endswith(" ") else "") + w_
+        lines.append(cur)
+        rendered.append((who, lines))
+
+    total_h = sum(len(l) for _, l in rendered) * line_h + 12
+    max_scroll = max(0, total_h - area.height + 10)
+    G.chat_scroll = clamp(G.chat_scroll, 0, max_scroll)
+    y = area.bottom - pad - total_h + G.chat_scroll
+    for who, lines in rendered:
+        for i, ln in enumerate(lines):
+            col = (255, 255, 255)
+            if i == 0:
+                is_me = (who == G.user)
+                col = (120, 255, 200) if is_me else (255, 220, 140)
+            T(ln, F_SMALL, col, area.x + pad, y)
+            y += line_h
+    screen.set_clip(None)
+
+    target = G.chat_target if G.chat_tab == "PRIVATE" else "mọi người"
+    hint = "Nhập tin gửi %s..." % target
+    field(pygame.Rect(30, HEIGHT - 92, WIDTH - 140, 42), "chat", "", hint=hint)
+    button(pygame.Rect(WIDTH - 100, HEIGHT - 92, 70, 42), "GỬI", send_chat,
+           base=(0, 130, 90), hov=(0, 180, 120), border=(0, 255, 180), font=F_MED)
+    button(pygame.Rect(50, HEIGHT - 50, WIDTH - 100, 32), "QUAY LẠI MENU",
+           lambda: set_state("MENU"),
+           base=(40, 20, 20), hov=(60, 30, 30), border=(255, 100, 100), color=(255, 200, 200))
 
 
 def draw_world(w):
@@ -1622,7 +1828,8 @@ def draw_world(w):
             continue
         draw_ship(p.x, p.y, p.skin)
         if len(w.players) > 1:
-            T(p.name[:10], F_TINY, (0, 255, 200) if i == li else (255, 200, 120), p.x + 25, p.y - 12, "midtop")
+            T(p.name[:10], F_TINY, (0, 255, 200) if i == li else (255, 200, 120),
+              p.x + 25, p.y - 12, "midtop")
     T("SCORE: %d" % w.score, F_MED, (255, 255, 255), 15, 15)
     T("COIN: %d" % P["coins"], F_MED, (255, 215, 0), 15, 40)
     me = w.players[li]
@@ -1633,29 +1840,30 @@ def draw_world(w):
         T(o.name[:8].upper(), F_TINY, (255, 200, 120), 15, 88)
         draw_hearts(60, 96, o.hp if o.alive else 0)
     if me.tmp_frames > 0:
-        T("Vũ khí tạm: %ds" % (me.tmp_frames // 60 + 1), F_TINY, (255, 200, 0), 15, 112)
+        T("VK tạm: %ds" % (me.tmp_frames // 60 + 1), F_TINY, (255, 200, 0), 15, 112)
     T("MÀN: %d/%d" % (w.level, MAX_LEVELS), F_MED, (0, 255, 200), WIDTH - 15, 15, "topright")
     if len(w.players) > 1:
         T("CHƠI ĐÔI", F_TINY, (200, 150, 255), WIDTH - 15, 40, "topright")
     if not me.alive and w.state == "PLAYING":
-        T("Bạn đã gục - chờ đồng đội qua màn để hồi sinh", F_SMALL, (255, 120, 120), WIDTH // 2, HEIGHT // 2 - 20, "midtop")
+        T("Bạn đã gục - chờ đồng đội qua màn", F_SMALL, (255, 120, 120),
+          WIDTH // 2, HEIGHT // 2 - 20, "midtop")
     if G.mode == "guest" and not G.got_snapshot:
-        T("Đang đồng bộ với chủ phòng...", F_MED, (255, 255, 255), WIDTH // 2, HEIGHT // 2, "midtop")
+        T("Đang đồng bộ...", F_MED, (255, 255, 255), WIDTH // 2, HEIGHT // 2, "midtop")
 
 
 def draw_pause():
     r = pygame.Rect(WIDTH // 2 - 180, HEIGHT // 2 - 100, 360, 200)
     click_area(pygame.Rect(0, 0, WIDTH, HEIGHT), lambda: None)
     draw_card(r, (255, 215, 0), (10, 15, 30, 235))
-    T("TẠM DỪNG GAME", F_LARGE, (255, 215, 0), WIDTH // 2, HEIGHT // 2 - 70, "midtop")
-    button(pygame.Rect(140, HEIGHT // 2, 140, 40), "TIẾP TỤC", lambda: set_play_state("PLAYING"), base=(0, 140, 80),
-           hov=(0, 200, 120), border=(0, 255, 150))
+    T("TẠM DỪNG", F_LARGE, (255, 215, 0), WIDTH // 2, HEIGHT // 2 - 70, "midtop")
+    button(pygame.Rect(140, HEIGHT // 2, 140, 40), "TIẾP TỤC", lambda: set_play_state("PLAYING"),
+           base=(0, 140, 80), hov=(0, 200, 120), border=(0, 255, 150))
 
     def to_menu():
         leave_match()
         set_state("MENU")
-    button(pygame.Rect(320, HEIGHT // 2, 140, 40), "MENU", to_menu, base=(140, 40, 40), hov=(200, 60, 60),
-           border=(255, 100, 100))
+    button(pygame.Rect(320, HEIGHT // 2, 140, 40), "MENU", to_menu, base=(140, 40, 40),
+           hov=(200, 60, 60), border=(255, 100, 100))
 
 
 def set_play_state(s):
@@ -1668,24 +1876,23 @@ def draw_end():
     col = (0, 255, 150) if win else (255, 60, 60)
     click_area(pygame.Rect(0, 0, WIDTH, HEIGHT), lambda: None)
     draw_card(pygame.Rect(WIDTH // 2 - 220, HEIGHT // 2 - 160, 440, 320), col, (15, 20, 35, 240))
-    T("CHIẾN THẮNG RỰC RỠ!" if win else "GAME OVER", F_LARGE, col, WIDTH // 2, HEIGHT // 2 - 125, "midtop")
-    T("Điểm số đạt được: %d" % (w.score if w else 0), F_MED, (255, 255, 255), WIDTH // 2, HEIGHT // 2 - 65, "midtop")
-    T("Kỷ lục cao nhất: %d" % P["hs"], F_MED, (255, 215, 0), WIDTH // 2, HEIGHT // 2 - 35, "midtop")
-    T("Xu hiện có: %d" % P["coins"], F_SMALL, (255, 235, 150), WIDTH // 2, HEIGHT // 2 - 5, "midtop")
+    T("CHIẾN THẮNG!" if win else "GAME OVER", F_LARGE, col, WIDTH // 2, HEIGHT // 2 - 125, "midtop")
+    T("Điểm: %d" % (w.score if w else 0), F_MED, (255, 255, 255), WIDTH // 2, HEIGHT // 2 - 65, "midtop")
+    T("Kỷ lục: %d" % P["hs"], F_MED, (255, 215, 0), WIDTH // 2, HEIGHT // 2 - 35, "midtop")
+    T("Xu: %d" % P["coins"], F_SMALL, (255, 235, 150), WIDTH // 2, HEIGHT // 2 - 5, "midtop")
 
     def to_menu():
         leave_match()
         set_state("MENU")
     coop_over = (G.mode in ("host", "guest")) or (w is not None and len(w.players) > 1)
     if coop_over:
-        T("Điểm chung của cả đội", F_TINY, (200, 150, 255), WIDTH // 2, HEIGHT // 2 + 20, "midtop")
-        button(pygame.Rect(WIDTH // 2 - 90, HEIGHT // 2 + 60, 180, 50), "MENU CHÍNH", to_menu, font=F_MED,
+        button(pygame.Rect(WIDTH // 2 - 90, HEIGHT // 2 + 60, 180, 50), "MENU", to_menu, font=F_MED,
                base=(40, 55, 85), hov=(60, 80, 120))
     else:
-        button(pygame.Rect(100, HEIGHT // 2 + 50, 180, 50), "CHƠI LẠI", start_solo, font=F_MED, base=(0, 140, 100),
-               hov=(0, 200, 150), border=(0, 255, 200))
-        button(pygame.Rect(320, HEIGHT // 2 + 50, 180, 50), "MENU CHÍNH", to_menu, font=F_MED, base=(40, 55, 85),
-               hov=(60, 80, 120))
+        button(pygame.Rect(100, HEIGHT // 2 + 50, 180, 50), "CHƠI LẠI", start_solo, font=F_MED,
+               base=(0, 140, 100), hov=(0, 200, 150), border=(0, 255, 200))
+        button(pygame.Rect(320, HEIGHT // 2 + 50, 180, 50), "MENU", to_menu, font=F_MED,
+               base=(40, 55, 85), hov=(60, 80, 120))
 
 
 def draw_overlays():
@@ -1700,11 +1907,9 @@ def draw_overlays():
             box = pygame.Rect(60, 250, WIDTH - 120, 190)
             draw_card(box, (200, 140, 255), (20, 15, 40, 250))
             T("LỜI MỜI CHƠI ĐÔI", F_MED, (200, 140, 255), WIDTH // 2, box.y + 18, "midtop")
-            T("%s mời bạn cùng chiến đấu!" % G.invite["from"], F_MED, (255, 255, 255), WIDTH // 2, box.y + 58, "midtop")
-            T("(%s sẽ là chủ phòng, dùng độ khó của họ)" % G.invite["from"], F_TINY, (160, 170, 200), WIDTH // 2,
-              box.y + 88, "midtop")
-            button(pygame.Rect(box.x + 40, box.bottom - 60, 150, 42), "Đồng ý", accept_invite, base=(0, 140, 80),
-                   hov=(0, 200, 120), border=(0, 255, 150), font=F_MED)
+            T("%s mời bạn!" % G.invite["from"], F_MED, (255, 255, 255), WIDTH // 2, box.y + 58, "midtop")
+            button(pygame.Rect(box.x + 40, box.bottom - 60, 150, 42), "Đồng ý", accept_invite,
+                   base=(0, 140, 80), hov=(0, 200, 120), border=(0, 255, 150), font=F_MED)
             button(pygame.Rect(box.right - 190, box.bottom - 60, 150, 42), "Từ chối", decline_invite,
                    base=(120, 35, 35), hov=(180, 55, 55), border=(255, 100, 100), font=F_MED)
     if G.toast_msg and time.time() < G.toast_until:
@@ -1720,44 +1925,76 @@ def draw_overlays():
 # SỰ KIỆN
 # ==========================================================
 def handle_text_key(ev):
+    """CHỈ xử lý phím điều khiển. Chữ thường do pygame.TEXTINPUT lo."""
     key = G.focus
     if key not in fields or ev.key == pygame.K_ESCAPE:
         return False
-    if ev.key == pygame.K_BACKSPACE:
+
+    # UniKey dùng DELETE (0x7F) để xoá khi compose — coi như BACKSPACE
+    if ev.key in (pygame.K_BACKSPACE, pygame.K_DELETE):
         fields[key] = fields[key][:-1]
-    elif ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+        return True
+
+    if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
         if G.state == "LOGIN":
             submit_auth()
         elif G.state == "FRIENDS":
             add_friend()
-    elif ev.key == pygame.K_TAB and G.state == "LOGIN":
+        elif G.state == "CHAT":
+            send_chat()
+        return True
+
+    if ev.key == pygame.K_TAB and G.state == "LOGIN":
         order = ["user", "pass"]
         G.focus = order[(order.index(key) + 1) % 2]
-    elif ev.unicode and ev.unicode.isprintable():
-        ch = ev.unicode
-        if key in ("user", "friend") and not all(c.isascii() and (c.isalnum() or c == "_") for c in ch):
-            return True
-        room = FIELD_MAX[key] - len(fields[key])
-        if room > 0:
-            fields[key] += ch[:room]
+        return True
+
+    # Không xử lý ev.unicode ở đây — chờ TEXTINPUT
     return True
 
 
 def handle_event(ev):
     if ev.type == pygame.QUIT:
         return False
+
     if G.state == "SPLASH":
         if ev.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
             set_state("LOGIN")
         return True
+
+    # === TEXTINPUT: IME đẩy chuỗi tiếng Việt đã compose xong ===
+    if ev.type == pygame.TEXTINPUT:
+        key = G.focus
+        if key in fields:
+            ch = ev.text or ""
+            ch = "".join(c for c in ch if c.isprintable())
+            if ch:
+                if key in ("user", "friend"):
+                    ch = "".join(c for c in ch if c.isascii() and (c.isalnum() or c == "_"))
+                room = FIELD_MAX[key] - len(fields[key])
+                if room > 0:
+                    fields[key] += ch[:room]
+        return True
+    # ==========================================================
+
     if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
         for rect, fn in reversed(prev_hits):
             if rect.collidepoint(ev.pos):
                 fn()
                 break
-    elif ev.type == pygame.MOUSEWHEEL and G.state in ("FRIENDS", "BOARD"):
-        G.scroll -= ev.y * 30
+    elif ev.type == pygame.MOUSEWHEEL:
+        if G.state in ("FRIENDS", "BOARD"):
+            G.scroll -= ev.y * 30
+        elif G.state == "CHAT":
+            G.chat_scroll += ev.y * 30
     elif ev.type == pygame.KEYDOWN:
+        if G.state == "CHAT" and not G.focus:
+            if ev.key == pygame.K_UP:
+                G.chat_scroll += 40
+                return True
+            elif ev.key == pygame.K_DOWN:
+                G.chat_scroll -= 40
+                return True
         if handle_text_key(ev):
             return True
         if G.state == "LOGIN" and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -1767,7 +2004,8 @@ def handle_event(ev):
                 G.state = "PAUSED"
             elif G.state == "PAUSED":
                 G.state = "PLAYING"
-            elif ev.key == pygame.K_ESCAPE and G.state in ("DIFF", "SHOP_WEAPON", "SHOP_SKIN", "PROFILE", "FRIENDS", "BOARD"):
+            elif ev.key == pygame.K_ESCAPE and G.state in (
+                    "DIFF", "SHOP_WEAPON", "SHOP_SKIN", "PROFILE", "FRIENDS", "BOARD", "CHAT"):
                 set_state("MENU")
     return True
 
@@ -1791,7 +2029,7 @@ def frame():
 
     if G.conn_lost and G.state not in ("LOGIN", "SPLASH"):
         if not (G.mode == "solo" and G.state in ("PLAYING", "PAUSED", "GAME_OVER", "VICTORY")):
-            go_login("Mất kết nối tới server. Vui lòng đăng nhập lại.")
+            go_login("Mất kết nối. Đăng nhập lại.")
 
     now = time.time()
     if G.user and G.net and not G.net.closed:
@@ -1803,8 +2041,8 @@ def frame():
         if G.state in ("FRIENDS", "BOARD") and now - G.last_refresh > 5:
             refresh_social()
 
-    if G.state in ("MENU", "LOGIN", "DIFF", "SHOP_WEAPON", "SHOP_SKIN", "PROFILE", "FRIENDS", "BOARD",
-                   "GAME_OVER", "VICTORY", "SPLASH"):
+    if G.state in ("MENU", "LOGIN", "DIFF", "SHOP_WEAPON", "SHOP_SKIN", "PROFILE",
+                   "FRIENDS", "BOARD", "GAME_OVER", "VICTORY", "SPLASH", "CHAT"):
         play_bgm("MENU")
     elif G.state in ("PLAYING", "PAUSED"):
         play_bgm("GAME")
@@ -1827,9 +2065,9 @@ def frame():
             draw_end()
     else:
         update_draw_particles()
-        {"LOGIN": draw_login, "MENU": draw_menu, "DIFF": draw_diff, "SHOP_WEAPON": draw_shop_weapon,
-         "SHOP_SKIN": draw_shop_skin, "PROFILE": draw_profile, "FRIENDS": draw_friends,
-         "BOARD": draw_board}.get(G.state, lambda: None)()
+        {"LOGIN": draw_login, "MENU": draw_menu, "DIFF": draw_diff,
+         "SHOP_WEAPON": draw_shop_weapon, "SHOP_SKIN": draw_shop_skin, "PROFILE": draw_profile,
+         "FRIENDS": draw_friends, "BOARD": draw_board, "CHAT": draw_chat}.get(G.state, lambda: None)()
     draw_overlays()
     pygame.display.flip()
     clock.tick(60)
