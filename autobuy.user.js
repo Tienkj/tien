@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AUTO Lên đơn (Giao diện google múp)
+// @name         AUTO Lên đơn
 // @namespace    https://like.vn/
-// @version      4.1
-// @description  auto đánh lọ cùng panh (cập nhật ui mới của google)
+// @version      4.2
+// @description  auto đánh lọ cùng panh (cập nhật ui mới của chị google)
 // @author       Tiencute
 // @match        *://like.vn/*
 // @match        *://*.like.vn/*
