@@ -233,7 +233,7 @@
         setHTML(root, `
             <style>${CSS}</style>
             <div id="at-header" class="at-appbar">
-                <div class="at-title">Nam⚡ tool v4.0</div>
+                <div class="at-title">Nam ⚡ tool</div>
                 <div style="display:flex;align-items:center;">
                     <button id="at-theme" class="at-icon-btn" title="Giao diện tối">☾</button>
                     <button id="at-min" class="at-icon-btn" title="Thu nhỏ">−</button>
