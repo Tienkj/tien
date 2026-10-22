@@ -1,9 +1,9 @@
 // ==UserScript==
+// @name         AUTO Lên đơn
 // @updateURL    https://raw.githubusercontent.com/<user>/<repo>/main/autotool.user.js
 // @downloadURL  https://raw.githubusercontent.com/<user>/<repo>/main/autotool.user.js
-// @name         AUTO Lên đơn
 // @namespace    https://like.vn/
-// @version      4.2
+// @version      5.0
 // @description  auto đánh lọ cùng panh (cập nhật ui mới của chị google)
 // @author       Tiencute
 // @match        *://like.vn/*
@@ -26,7 +26,7 @@
         waitFirst: 120,
         waitMore: 300,
         pollSec: 30,
-        minimized: true, // mặc định thu nhỏ
+        minimized: true, 
         dark: false,     // giao diện tối
     };
 
@@ -64,7 +64,6 @@
     }
 
     // ================== THEME (Material, sáng) ==================
-    
     const TEXT_MAP = {
         '#d1d5db': '#49454f', // mặc định
         '#9ca3af': '#49454f',
@@ -235,7 +234,7 @@
         setHTML(root, `
             <style>${CSS}</style>
             <div id="at-header" class="at-appbar">
-                <div class="at-title">Nam ⚡ tool</div>
+                <div class="at-title">Nam⚡ tool v5.0</div>
                 <div style="display:flex;align-items:center;">
                     <button id="at-theme" class="at-icon-btn" title="Giao diện tối">☾</button>
                     <button id="at-min" class="at-icon-btn" title="Thu nhỏ">−</button>
@@ -322,7 +321,7 @@
             minBtn.title = m ? 'Phóng to' : 'Thu nhỏ';
             root.style.width = m ? '260px' : '360px';
         };
-        let minimized = CONFIG.minimized !== false; 
+        let minimized = CONFIG.minimized !== false; // lấy trạng thái đã lưu, mặc định thu nhỏ
         applyMin(minimized);
         minBtn.addEventListener('click', () => {
             minimized = !minimized;
@@ -706,10 +705,8 @@
         return null;
     }
 
-    // Sau khi lên đơn: chờ đơn mới xuất hiện ở đầu bảng rồi chờ nó Hoàn thành
-    async function waitNewOrderDone(baselineCode) {
-        const t0 = Date.now();
-        const APPEAR_TIMEOUT = 180000; // 3 phút không thấy đơn mới thì bỏ qua
+    // Sau khi lên đơn: chỉ nhìn đơn trên cùng, Hoàn thành thì đi tiếp, chưa thì chờ
+    async function waitTopOrderDone() {
         while (!abortFlag) {
             let latest = null;
             try { latest = await getLatestOrder(); } catch (e) {}
@@ -717,24 +714,16 @@
                 log('⚠ Không đọc được lịch sử đơn, thử lại...', '#fbbf24');
             } else {
                 showLatest(latest.status);
-                const isNew = latest.code && latest.code !== baselineCode;
-                if (isNew) {
-                    const k = statusKind(latest.status);
-                    if (k === 'done') {
-                        log(`✅ Đơn ${latest.code}: ${latest.status}`, '#10b981');
-                        return true;
-                    }
-                    if (k === 'dead') {
-                        log(`⚠ Đơn ${latest.code}: ${latest.status}`, '#fbbf24');
-                        return false;
-                    }
-                    log(`⏳ Đơn ${latest.code}: "${latest.status}", chờ hoàn thành...`, '#6b7280');
-                } else if (Date.now() - t0 > APPEAR_TIMEOUT) {
-                    log('⚠ Quá 3 phút chưa thấy đơn mới trong lịch sử, bỏ qua.', '#fbbf24');
-                    return false;
-                } else {
-                    log('⏳ Chờ đơn mới xuất hiện trong lịch sử...', '#6b7280');
+                const k = statusKind(latest.status);
+                if (k === 'done') {
+                    log(`✅ Đơn trên cùng: ${latest.status}`, '#10b981');
+                    return true;
                 }
+                if (k === 'dead') {
+                    log(`⚠ Đơn trên cùng: ${latest.status}`, '#fbbf24');
+                    return false;
+                }
+                log(`⏳ Đơn trên cùng đang "${latest.status}", chờ hoàn thành...`, '#6b7280');
             }
             await countdown(CONFIG.pollSec, 'Kiểm tra đơn sau');
         }
@@ -817,7 +806,7 @@
                     await countdown(60, 'Chờ 60s rồi kiểm tra đơn');
                     if (abortFlag) break;
                     // Đang chạy -> chờ và kiểm tra thường xuyên; Hoàn thành -> sang đơn kế (vòng lặp)
-                    await waitNewOrderDone(before.code);
+                    await waitTopOrderDone();
                 } else {
                     log('⏳ Lên đơn không thành công, nghỉ 60s rồi thử lại...', '#6b7280');
                     await countdown(60, 'Nghỉ');
