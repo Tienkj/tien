@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AUTO Lên đơn
+// @name         AUTO Lên đơn (Giao diện google múp)
 // @namespace    https://like.vn/
-// @version      3.7
-// @description  auto đánh lọ cùng panh
+// @version      4.0
+// @description  auto đánh lọ cùng panh (cập nhật ui mới của google)
 // @author       Tiencute
 // @match        *://like.vn/*
 // @match        *://*.like.vn/*
@@ -24,6 +24,8 @@
         waitFirst: 120,
         waitMore: 300,
         pollSec: 30,
+        minimized: true, // mặc định thu nhỏ
+        dark: false,     // giao diện tối
     };
 
     function loadConfig() {
@@ -41,6 +43,7 @@
     let running = false;
     let abortFlag = false;
     let UI = null;
+    let lastStatus = null;
     const $id = (id) => document.getElementById(id);
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -58,65 +61,234 @@
         }
     }
 
+    // ================== THEME (Material, sáng) ==================
+    
+    const TEXT_MAP = {
+        '#d1d5db': '#49454f', // mặc định
+        '#9ca3af': '#49454f',
+        '#6b7280': '#79747e', // phụ
+        '#10b981': '#1e6b34', // thành công
+        '#ef4444': '#b3261e', // lỗi
+        '#fbbf24': '#8a5a00', // cảnh báo / đang chờ
+        '#a78bfa': '#6750a4', // tiêu đề bước
+        '#8b5cf6': '#6750a4',
+        '#6366f1': '#6750a4',
+    };
+    const DOT_MAP = {
+        '#6b7280': '#938f99',
+        '#fbbf24': '#f9ab00',
+        '#10b981': '#1e8e3e',
+        '#ef4444': '#d93025',
+    };
+    const TEXT_MAP_DARK = {
+        '#d1d5db': '#cac4d0',
+        '#9ca3af': '#cac4d0',
+        '#6b7280': '#938f99',
+        '#10b981': '#81c995',
+        '#ef4444': '#f2b8b5',
+        '#fbbf24': '#fdd663',
+        '#a78bfa': '#d0bcff',
+        '#8b5cf6': '#d0bcff',
+        '#6366f1': '#d0bcff',
+    };
+    const DOT_MAP_DARK = {
+        '#6b7280': '#938f99',
+        '#fbbf24': '#fdd663',
+        '#10b981': '#81c995',
+        '#ef4444': '#f28b82',
+    };
+    const tc = (c) => (CONFIG.dark ? TEXT_MAP_DARK : TEXT_MAP)[c] || c;
+    const dc = (c) => (CONFIG.dark ? DOT_MAP_DARK : DOT_MAP)[c] || c;
+
+    const CSS = `
+        #autotool-root, #autotool-root * { box-sizing: border-box; }
+        #autotool-root {
+            --primary:#6750a4; --on-primary:#fff; --primary-container:#eaddff; --on-primary-container:#21005d;
+            --surface:#fffbfe; --surface-1:#f7f2fa; --surface-2:#f3edf7; --surface-3:#ece6f0;
+            --on-surface:#1d1b20; --on-surface-var:#49454f; --outline:#79747e; --outline-var:#cac4d0;
+            --error:#b3261e; --error-container:#f9dedc; --on-error-container:#410e0b;
+            --hover:rgba(29,27,32,.08); color-scheme: light;
+            position: fixed; top: 20px; right: 20px; z-index: 2147483647;
+            width: 360px; max-height: 90vh;
+            background: var(--surface); color: var(--on-surface);
+            border-radius: 28px;
+            font: 400 14px/20px Roboto, "Google Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+            box-shadow: 0 1px 3px rgba(0,0,0,.2), 0 8px 24px rgba(0,0,0,.14);
+            display: flex; flex-direction: column; overflow: hidden;
+            letter-spacing: .1px;
+        }
+        #autotool-root.at-dark {
+            --primary:#d0bcff; --on-primary:#381e72; --primary-container:#4f378b; --on-primary-container:#eaddff;
+            --surface:#1d1b20; --surface-1:#25232a; --surface-2:#2b2930; --surface-3:#36343b;
+            --on-surface:#e6e0e9; --on-surface-var:#cac4d0; --outline:#938f99; --outline-var:#49454f;
+            --error:#f2b8b5; --error-container:#8c1d18; --on-error-container:#f9dedc;
+            --hover:rgba(230,224,233,.1); color-scheme: dark;
+            box-shadow: 0 1px 3px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.45);
+        }
+        #autotool-root button { font-family: inherit; }
+        #autotool-root .at-appbar {
+            display:flex; align-items:center; justify-content:space-between;
+            padding: 16px 12px 8px 24px; cursor: move; user-select: none;
+        }
+        #autotool-root .at-title { font-size: 20px; line-height: 28px; font-weight: 500; color: var(--on-surface); }
+        #autotool-root .at-icon-btn {
+            width: 40px; height: 40px; border: none; border-radius: 50%;
+            background: transparent; color: var(--on-surface-var); cursor: pointer;
+            font-size: 20px; display:flex; align-items:center; justify-content:center;
+            transition: background .15s;
+        }
+        #autotool-root .at-icon-btn:hover { background: var(--hover); }
+        #autotool-root .at-body {
+            padding: 4px 24px 24px; display:flex; flex-direction:column; gap: 16px; overflow-y:auto;
+        }
+        #autotool-root .at-chip {
+            display:inline-flex; align-items:center; gap:8px; align-self:flex-start;
+            height: 32px; padding: 0 12px; border-radius: 8px;
+            background: var(--surface-2); color: var(--on-surface-var); font-size: 13px; font-weight: 500;
+        }
+        #autotool-root .at-dot { width:8px; height:8px; border-radius:50%; background:#938f99; flex:none; transition: background .2s; }
+        #autotool-root .at-label-sm { font-size: 12px; color: var(--on-surface-var); font-weight: 500; margin: 0 0 8px 4px; letter-spacing:.4px; }
+
+        /* Outlined text field */
+        #autotool-root .at-field { position: relative; }
+        #autotool-root .at-field input {
+            width: 100%; height: 48px; padding: 0 16px; border-radius: 12px;
+            border: 1px solid var(--outline); background: transparent; color: var(--on-surface);
+            font: inherit; outline: none; transition: border-color .15s, box-shadow .15s;
+        }
+        #autotool-root .at-field input:hover { border-color: var(--on-surface); }
+        #autotool-root .at-field input:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+        #autotool-root .at-field label {
+            position: absolute; left: 12px; top: 14px; padding: 0 4px;
+            color: var(--on-surface-var); background: var(--surface); pointer-events: none;
+            transition: all .15s ease; transform-origin: left top;
+        }
+        #autotool-root .at-field input:focus + label,
+        #autotool-root .at-field input:not(:placeholder-shown) + label {
+            top: -9px; font-size: 12px; line-height: 16px;
+        }
+        #autotool-root .at-field input:focus + label { color: var(--primary); }
+
+        #autotool-root .at-row { display:flex; gap: 8px; align-items:center; }
+        #autotool-root .at-row .at-field { flex:1; }
+
+        /* Buttons */
+        #autotool-root .at-btn {
+            height: 40px; padding: 0 24px; border: none; border-radius: 20px; cursor: pointer;
+            font-size: 14px; font-weight: 500; letter-spacing: .1px;
+            display:inline-flex; align-items:center; justify-content:center; gap:8px;
+            transition: box-shadow .15s, background .15s, opacity .15s;
+        }
+        #autotool-root .at-btn:disabled { opacity: .38; cursor: default; box-shadow:none; }
+        #autotool-root .at-btn-filled { background: var(--primary); color: var(--on-primary); }
+        #autotool-root .at-btn-filled:not(:disabled):hover { box-shadow: 0 1px 3px rgba(0,0,0,.3); filter: brightness(1.08); }
+        #autotool-root .at-btn-tonal { background: var(--primary-container); color: var(--on-primary-container); }
+        #autotool-root .at-btn-tonal:not(:disabled):hover { box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+        #autotool-root .at-btn-danger { background: var(--error-container); color: var(--on-error-container); }
+        #autotool-root .at-btn-danger:not(:disabled):hover { box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+        #autotool-root .at-btn-text { background: transparent; color: var(--primary); padding: 0 12px; height: 32px; border-radius: 16px; }
+        #autotool-root .at-btn-text:hover { background: var(--hover); }
+        #autotool-root .at-actions { display:flex; gap: 8px; }
+        #autotool-root .at-actions .at-btn { flex:1; }
+
+        /* Link list */
+        #autotool-root .at-links { display:flex; flex-direction:column; max-height: 168px; overflow-y:auto; margin-top: 8px; }
+        #autotool-root .at-link {
+            display:flex; align-items:center; gap: 12px; min-height: 48px; padding: 4px 4px 4px 12px;
+            border-radius: 12px; transition: background .15s;
+        }
+        #autotool-root .at-link:hover { background: var(--surface-2); }
+        #autotool-root .at-link-num {
+            width: 24px; height: 24px; border-radius: 50%; flex:none;
+            background: var(--primary-container); color: var(--on-primary-container);
+            font-size: 12px; font-weight: 500; display:flex; align-items:center; justify-content:center;
+        }
+        #autotool-root .at-link-txt { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size: 13px; }
+        #autotool-root .at-link .at-icon-btn { width: 32px; height: 32px; font-size: 18px; }
+        #autotool-root .at-empty { text-align:center; padding: 12px; color: var(--outline); font-size: 13px; }
+
+        /* Info tiles */
+        #autotool-root .at-tiles { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        #autotool-root .at-tile { background: var(--surface-2); border-radius: 16px; padding: 12px 16px; }
+        #autotool-root .at-tile-k { font-size: 12px; color: var(--on-surface-var); letter-spacing:.4px; }
+        #autotool-root .at-tile-v { font-size: 15px; font-weight: 500; margin-top: 2px; color: var(--on-surface); }
+
+        /* Log */
+        #autotool-root .at-log-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: 4px; }
+        #autotool-root .at-log-head .at-label-sm { margin: 0; }
+        #autotool-root .at-log {
+            background: var(--surface-2); border-radius: 16px; padding: 12px 14px; height: 150px; overflow-y:auto;
+            font: 12px/18px "Roboto Mono", ui-monospace, Menlo, Consolas, monospace; color: var(--on-surface-var);
+            white-space: pre-wrap; word-break: break-word;
+        }
+        #autotool-root ::-webkit-scrollbar { width: 8px; }
+        #autotool-root ::-webkit-scrollbar-thumb { background: var(--outline-var); border-radius: 4px; }
+        #autotool-root ::-webkit-scrollbar-track { background: transparent; }
+    `;
+
     // ================== UI ==================
     function createUI() {
         const root = document.createElement('div');
         root.id = 'autotool-root';
-        root.style.cssText = `
-            position: fixed; top: 20px; right: 20px; z-index: 2147483647;
-            width: 380px; max-height: 90vh;
-            background: #1a1d21; color: #e5e7eb;
-            border-radius: 12px; border: 1px solid #374151;
-            font: 13px/1.5 system-ui, -apple-system, sans-serif;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            display: flex; flex-direction: column; overflow: hidden;
-        `;
         setHTML(root, `
-            <div id="at-header" style="padding:10px 14px;background:linear-gradient(135deg,#6366f1,#8b5cf6);cursor:move;display:flex;align-items:center;justify-content:space-between;user-select:none;">
-                <div style="font-weight:700;font-size:14px;">⚡ Nam sét tool</div>
-                <button id="at-min" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;font-weight:bold;">−</button>
+            <style>${CSS}</style>
+            <div id="at-header" class="at-appbar">
+                <div class="at-title">Nam⚡ tool v4.0</div>
+                <div style="display:flex;align-items:center;">
+                    <button id="at-theme" class="at-icon-btn" title="Giao diện tối">☾</button>
+                    <button id="at-min" class="at-icon-btn" title="Thu nhỏ">−</button>
+                </div>
             </div>
-            <div id="at-body" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;">
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <div id="at-status-dot" style="width:10px;height:10px;border-radius:50%;background:#6b7280;"></div>
-                    <div id="at-status" style="font-size:12px;color:#9ca3af;flex:1;">Chưa chạy</div>
+            <div id="at-body" class="at-body">
+                <div class="at-chip">
+                    <span id="at-status-dot" class="at-dot"></span>
+                    <span id="at-status">Chưa chạy</span>
                 </div>
+
                 <div>
-                    <label style="display:block;font-size:11px;color:#9ca3af;margin-bottom:4px;">Danh sách link TikTok</label>
-                    <div style="display:flex;gap:6px;">
-                        <input id="at-link-input" placeholder="https://www.tiktok.com/@username" style="flex:1;background:#111827;border:1px solid #374151;color:#e5e7eb;padding:6px 8px;border-radius:6px;font-size:12px;outline:none;"/>
-                        <button id="at-add-link" style="background:#6366f1;border:none;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">+ Thêm</button>
+                    <div class="at-row">
+                        <div class="at-field">
+                            <input id="at-link-input" placeholder=" " autocomplete="off"/>
+                            <label for="at-link-input">Link TikTok</label>
+                        </div>
+                        <button id="at-add-link" class="at-btn at-btn-tonal" style="padding:0 16px;">Thêm</button>
                     </div>
-                    <div id="at-links-list" style="margin-top:6px;max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
+                    <div id="at-links-list" class="at-links"></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    <div>
-                        <label style="display:block;font-size:11px;color:#9ca3af;margin-bottom:4px;">Số lượng/lần</label>
-                        <input id="at-amount" type="number" min="10" style="width:100%;background:#111827;border:1px solid #374151;color:#e5e7eb;padding:6px 8px;border-radius:6px;font-size:12px;outline:none;"/>
+
+                <div class="at-row">
+                    <div class="at-field">
+                        <input id="at-amount" type="number" min="10" placeholder=" "/>
+                        <label for="at-amount">Số lượng / lần</label>
                     </div>
-                    <div>
-                        <label style="display:block;font-size:11px;color:#9ca3af;margin-bottom:4px;">Chờ 1 (theo popup)</label>
-                        <div style="padding:6px 8px;color:#10b981;font-weight:600;font-size:12px;">Tự động</div>
-                    </div>
-                    <div>
-                        <label style="display:block;font-size:11px;color:#9ca3af;margin-bottom:4px;">Kiểm tra đơn mỗi (giây)</label>
-                        <input id="at-poll" type="number" min="5" style="width:100%;background:#111827;border:1px solid #374151;color:#e5e7eb;padding:6px 8px;border-radius:6px;font-size:12px;outline:none;"/>
-                    </div>
-                    <div>
-                        <label style="display:block;font-size:11px;color:#9ca3af;margin-bottom:4px;">Đơn mới nhất</label>
-                        <div id="at-total-wait" style="padding:6px 8px;color:#fbbf24;font-weight:600;font-size:13px;">-</div>
+                    <div class="at-field">
+                        <input id="at-poll" type="number" min="5" placeholder=" "/>
+                        <label for="at-poll">Kiểm tra mỗi (giây)</label>
                     </div>
                 </div>
-                <div style="display:flex;gap:8px;">
-                    <button id="at-start" style="flex:1;background:#10b981;border:none;color:#fff;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">▶ Bắt đầu</button>
-                    <button id="at-stop" style="flex:1;background:#ef4444;border:none;color:#fff;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;opacity:0.5;" disabled>■ Dừng</button>
+
+                <div class="at-tiles">
+                    <div class="at-tile">
+                        <div class="at-tile-k">Chờ 1</div>
+                        <div class="at-tile-v">Theo popup</div>
+                    </div>
+                    <div class="at-tile">
+                        <div class="at-tile-k">Đơn mới nhất</div>
+                        <div id="at-total-wait" class="at-tile-v">-</div>
+                    </div>
                 </div>
+
+                <div class="at-actions">
+                    <button id="at-start" class="at-btn at-btn-filled">▶ Bắt đầu</button>
+                    <button id="at-stop" class="at-btn at-btn-danger" disabled>■ Dừng</button>
+                </div>
+
                 <div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                        <label style="font-size:11px;color:#9ca3af;">Nhật ký</label>
-                        <button id="at-clear-log" style="background:none;border:none;color:#6366f1;font-size:11px;cursor:pointer;">Xoá</button>
+                    <div class="at-log-head">
+                        <span class="at-label-sm">Nhật ký</span>
+                        <button id="at-clear-log" class="at-btn at-btn-text">Xoá</button>
                     </div>
-                    <div id="at-log" style="background:#0f1115;border:1px solid #1f2937;border-radius:6px;padding:6px 8px;height:150px;overflow-y:auto;font:11px/1.5 monospace;color:#d1d5db;"></div>
+                    <div id="at-log" class="at-log"></div>
                 </div>
             </div>
         `);
@@ -126,7 +298,7 @@
         const header = root.querySelector('#at-header');
         let dragging = false, dx = 0, dy = 0;
         header.addEventListener('mousedown', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
+            if (e.target.closest('button')) return;
             dragging = true;
             dx = e.clientX - root.offsetLeft;
             dy = e.clientY - root.offsetTop;
@@ -140,12 +312,30 @@
         document.addEventListener('mouseup', () => dragging = false);
 
         // Minimize
-        let minimized = false;
-        root.querySelector('#at-min').addEventListener('click', () => {
+        const bodyEl = root.querySelector('#at-body');
+        const minBtn = root.querySelector('#at-min');
+        const applyMin = (m) => {
+            bodyEl.style.display = m ? 'none' : 'flex';
+            minBtn.textContent = m ? '+' : '−';
+            minBtn.title = m ? 'Phóng to' : 'Thu nhỏ';
+            root.style.width = m ? '260px' : '360px';
+        };
+        let minimized = CONFIG.minimized !== false; 
+        applyMin(minimized);
+        minBtn.addEventListener('click', () => {
             minimized = !minimized;
-            root.querySelector('#at-body').style.display = minimized ? 'none' : 'flex';
-            root.querySelector('#at-min').textContent = minimized ? '+' : '−';
+            applyMin(minimized);
+            CONFIG.minimized = minimized;
+            saveConfig(CONFIG);
         });
+
+        // Đổi giao diện sáng/tối
+        root.querySelector('#at-theme').addEventListener('click', () => {
+            CONFIG.dark = !CONFIG.dark;
+            saveConfig(CONFIG);
+            applyTheme(root);
+        });
+        applyTheme(root);
         return root;
     }
 
@@ -157,16 +347,31 @@
         if (!box) return;
         const t = new Date().toLocaleTimeString('vi-VN');
         const line = document.createElement('div');
-        line.style.color = color;
+        line.dataset.c = color;
+        line.style.color = tc(color);
         line.textContent = `[${t}] ${msg}`;
         box.appendChild(line);
         box.scrollTop = box.scrollHeight;
     }
+    function applyTheme(root) {
+        root = root || $id('autotool-root');
+        if (!root) return;
+        root.classList.toggle('at-dark', !!CONFIG.dark);
+        const b = root.querySelector('#at-theme');
+        if (b) {
+            b.textContent = CONFIG.dark ? '☀' : '☾';
+            b.title = CONFIG.dark ? 'Giao diện sáng' : 'Giao diện tối';
+        }
+        // tô lại màu các dòng log và trạng thái theo theme mới
+        root.querySelectorAll('#at-log div[data-c]').forEach((l) => { l.style.color = tc(l.dataset.c); });
+        if (UI && lastStatus) setStatus(lastStatus.text, lastStatus.color, lastStatus.dot);
+    }
     function setStatus(text, color = '#9ca3af', dot = '#6b7280') {
+        lastStatus = { text, color, dot };
         if (!UI) return;
         $id('at-status').textContent = text;
-        $id('at-status').style.color = color;
-        $id('at-status-dot').style.background = dot;
+        $id('at-status').style.color = tc(color);
+        $id('at-status-dot').style.background = dc(dot);
     }
     function showLatest(text) {
         if (!UI || !$id('at-total-wait')) return;
@@ -178,26 +383,27 @@
         list.textContent = '';
         if (CONFIG.links.length === 0) {
             const empty = document.createElement('div');
-            empty.style.cssText = 'text-align:center;padding:8px;color:#6b7280;font-size:11px;';
+            empty.className = 'at-empty';
             empty.textContent = 'Chưa có link nào. Thêm link ở trên.';
             list.appendChild(empty);
             return;
         }
         CONFIG.links.forEach((link, idx) => {
             const item = document.createElement('div');
-            item.style.cssText = 'display:flex;align-items:center;gap:6px;background:#111827;padding:6px 8px;border-radius:6px;font-size:11px;';
+            item.className = 'at-link';
 
             const num = document.createElement('span');
-            num.style.cssText = 'color:#6366f1;font-weight:600;';
-            num.textContent = (idx + 1) + '.';
+            num.className = 'at-link-num';
+            num.textContent = String(idx + 1);
 
             const txt = document.createElement('span');
-            txt.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;';
+            txt.className = 'at-link-txt';
             txt.title = link;
             txt.textContent = link;
 
             const del = document.createElement('button');
-            del.style.cssText = 'background:#7f1d1d;border:none;color:#fca5a5;width:20px;height:20px;border-radius:4px;cursor:pointer;font-size:12px;';
+            del.className = 'at-icon-btn';
+            del.title = 'Xoá';
             del.textContent = '×';
             del.addEventListener('click', () => {
                 CONFIG.links.splice(idx, 1);
@@ -550,7 +756,7 @@
                     return false;
                 }
                 if (resp.status === -1) {
-                    log('ℹ Popup đã xong nhưng không bắt được phản hồi đơn. Sẽ xác nhận qua lịch sử đơn.', '#fbbf24');
+                    log('ℹ Popup đã xong. Sẽ xác nhận qua lịch sử đơn.', '#fbbf24');
                     return true;
                 }
                 const ok = resp.status >= 200 && resp.status < 300;
@@ -581,9 +787,7 @@
         abortFlag = false;
 
         $id('at-start').disabled = true;
-        $id('at-start').style.opacity = '0.5';
         $id('at-stop').disabled = false;
-        $id('at-stop').style.opacity = '1';
 
         log('🚀 Bắt đầu auto!', '#10b981');
         setStatus('Đang chạy...', '#10b981', '#10b981');
@@ -623,9 +827,7 @@
         setStatus('Đã dừng', '#ef4444', '#6b7280');
         running = false;
         $id('at-start').disabled = false;
-        $id('at-start').style.opacity = '1';
         $id('at-stop').disabled = true;
-        $id('at-stop').style.opacity = '0.5';
     }
 
     function stopAuto() {
@@ -642,6 +844,7 @@
                 UI = createUI();
                 bindUI();
                 renderLinks();
+                setStatus('Chưa chạy', '#9ca3af', '#6b7280');
                 log('✅ UI sẵn sàng. Thêm link rồi bấm ▶ Bắt đầu.', '#10b981');
             } catch (e) {
                 console.error('[AutoTool] Lỗi khi tạo UI:', e);
