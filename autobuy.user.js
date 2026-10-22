@@ -1,4 +1,6 @@
 // ==UserScript==
+// @updateURL    https://raw.githubusercontent.com/<user>/<repo>/main/autotool.user.js
+// @downloadURL  https://raw.githubusercontent.com/<user>/<repo>/main/autotool.user.js
 // @name         AUTO Lên đơn
 // @namespace    https://like.vn/
 // @version      4.2
