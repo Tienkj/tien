@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         AUTO Lên đơn
-// @updateURL    https://raw.githubusercontent.com/<user>/<repo>/main/autotool.user.js
-// @downloadURL  https://raw.githubusercontent.com/<user>/<repo>/main/autotool.user.js
+// @updateURL    https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
+// @downloadURL  https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @namespace    https://like.vn/
-// @version      5.0
+// @version      5.2
 // @description  auto đánh lọ cùng panh (cập nhật ui mới của chị google)
 // @author       Tiencute
 // @match        *://like.vn/*
@@ -26,7 +26,7 @@
         waitFirst: 120,
         waitMore: 300,
         pollSec: 30,
-        minimized: true, 
+        minimized: true, // mặc định thu nhỏ
         dark: false,     // giao diện tối
     };
 
@@ -64,6 +64,7 @@
     }
 
     // ================== THEME (Material, sáng) ==================
+    
     const TEXT_MAP = {
         '#d1d5db': '#49454f', // mặc định
         '#9ca3af': '#49454f',
@@ -234,7 +235,7 @@
         setHTML(root, `
             <style>${CSS}</style>
             <div id="at-header" class="at-appbar">
-                <div class="at-title">Nam ⚡ tool</div>
+                <div class="at-title">Nam⚡tool</div>
                 <div style="display:flex;align-items:center;">
                     <button id="at-theme" class="at-icon-btn" title="Giao diện tối">☾</button>
                     <button id="at-min" class="at-icon-btn" title="Thu nhỏ">−</button>
