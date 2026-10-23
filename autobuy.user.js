@@ -281,8 +281,8 @@
                 </div>
 
                 <div class="at-actions">
-                    // <button id="at-start" class="at-btn at-btn-filled">▶ Bắt đầu</button>
-                    <button id="at-stop" class="at-btn at-btn-danger" disabled>■ Dừng</button>
+                    <button id="at-start" class="at-btn at-btn-filled">▶</button>
+                    <button id="at-stop" class="at-btn at-btn-danger" disabled>■</button>
                 </div>
 
                 <div>
