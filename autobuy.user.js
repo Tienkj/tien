@@ -3,8 +3,8 @@
 // @updateURL    https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @downloadURL  https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @namespace    https://like.vn/
-// @version      5.2
-// @description  auto đánh lọ cùng panh (cập nhật ui mới của chị google)
+// @version      5.4
+// @description  auto đánh lọ cùng panh(vá lỗi và bỏ qua)
 // @author       Tiencute
 // @match        *://like.vn/*
 // @match        *://*.like.vn/*
@@ -837,7 +837,7 @@
                 bindUI();
                 renderLinks();
                 setStatus('Chưa chạy', '#9ca3af', '#6b7280');
-                log('✅ UI sẵn sàng. Thêm link rồi bấm ▶ Bắt đầu.', '#10b981');
+                log('✅ Tool đã sẫn sàng.Bấm ▶ Bắt đầu để đập lọ.', '#10b981');
             } catch (e) {
                 console.error('[AutoTool] Lỗi khi tạo UI:', e);
                 return;
