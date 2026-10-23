@@ -3,8 +3,8 @@
 // @updateURL    https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @downloadURL  https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @namespace    https://like.vn/
-// @version      6.0
-// @description  Tool đã dừng hoạt động
+// @version      6.1
+// @description  Panh đã dừng lọ
 // @author       Tiencute
 // @match        *://like.vn/*
 // @match        *://*.like.vn/*
@@ -156,7 +156,7 @@
 
                 <div class="at-notice">
                     <div class="at-notice-t">Tool đã dừng hoạt động</div>
-                    <div class="at-notice-d">Tool đã được tạm dừng và sẽ không cập nhật nữa. Bạn có thể tắt hoặc gỡ script trong Tampermonkey.</div>
+                    <div class="at-notice-d">vì lo cại.</div>
                 </div>
 
                 <div>
