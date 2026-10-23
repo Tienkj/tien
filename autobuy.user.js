@@ -3,7 +3,7 @@
 // @updateURL    https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @downloadURL  https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @namespace    https://like.vn/
-// @version      5.4
+// @version      6.7
 // @description  auto đánh lọ cùng panh(vá lỗi và bỏ qua)
 // @author       Tiencute
 // @match        *://like.vn/*
@@ -281,7 +281,7 @@
                 </div>
 
                 <div class="at-actions">
-                    <button id="at-start" class="at-btn at-btn-filled">▶ Bắt đầu</button>
+                    // <button id="at-start" class="at-btn at-btn-filled">▶ Bắt đầu</button>
                     <button id="at-stop" class="at-btn at-btn-danger" disabled>■ Dừng</button>
                 </div>
 
