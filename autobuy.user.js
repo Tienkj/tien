@@ -3,8 +3,8 @@
 // @updateURL    https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @downloadURL  https://raw.githubusercontent.com/Tienkj/tien/main/autobuy.user.js
 // @namespace    https://like.vn/
-// @version      6.9
-// @description  auto đánh lọ cùng panh(vá lỗi và bỏ qua)
+// @version      7.0
+// @description  auto đánh lọ cùng panh (vá nút Tạo đơn)
 // @author       Tiencute
 // @match        *://like.vn/*
 // @match        *://*.like.vn/*
@@ -28,6 +28,8 @@
         pollSec: 30,
         minimized: true, // mặc định thu nhỏ
         dark: false,     // giao diện tối
+        user: '',        // đăng nhập nhanh
+        pass: '',
     };
 
     function loadConfig() {
@@ -64,7 +66,7 @@
     }
 
     // ================== THEME (Material, sáng) ==================
-    
+    // Màu log/status gọi trong code cũ -> đổi sang tông Material
     const TEXT_MAP = {
         '#d1d5db': '#49454f', // mặc định
         '#9ca3af': '#49454f',
@@ -280,9 +282,27 @@
                     </div>
                 </div>
 
+                <div>
+                    <div class="at-label-sm">Đăng nhập nhanh</div>
+                    <div class="at-row">
+                        <div class="at-field">
+                            <input id="at-user" placeholder=" " autocomplete="off"/>
+                            <label for="at-user">Tài khoản</label>
+                        </div>
+                        <div class="at-field">
+                            <input id="at-pass" type="password" placeholder=" " autocomplete="off"/>
+                            <label for="at-pass">Mật khẩu</label>
+                        </div>
+                    </div>
+                    <div class="at-row" style="margin-top:8px;">
+                        <button id="at-login" class="at-btn at-btn-tonal" style="flex:1;">Đăng nhập</button>
+                        <button id="at-login-clear" class="at-btn at-btn-text">Xoá</button>
+                    </div>
+                </div>
+
                 <div class="at-actions">
-                    <button id="at-start" class="at-btn at-btn-filled">▶</button>
-                    <button id="at-stop" class="at-btn at-btn-danger" disabled>■</button>
+                    <button id="at-start" class="at-btn at-btn-filled">▶ Bắt đầu</button>
+                    <button id="at-stop" class="at-btn at-btn-danger" disabled>■ Dừng</button>
                 </div>
 
                 <div>
@@ -485,13 +505,98 @@
         });
 
         $id('at-stop').addEventListener('click', () => stopAuto());
+
+        // Đăng nhập nhanh
+        $id('at-user').value = CONFIG.user || '';
+        $id('at-pass').value = CONFIG.pass || '';
+        $id('at-login').addEventListener('click', () => quickLogin(false));
+        $id('at-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') quickLogin(false); });
+        $id('at-login-clear').addEventListener('click', () => {
+            CONFIG.user = ''; CONFIG.pass = '';
+            saveConfig(CONFIG);
+            $id('at-user').value = ''; $id('at-pass').value = '';
+            log('🗑 Đã xoá tài khoản đã lưu.', '#fbbf24');
+        });
+    }
+
+    // ================== ĐĂNG NHẬP NHANH ==================
+    const isVisible = (el) => !!el && el.getClientRects().length > 0;
+
+    function setNativeValue(el, value) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        el.focus();
+        setter.call(el, value);
+        el.dispatchEvent(new Event('input',  { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+    }
+
+    // Tìm form đăng nhập đang hiện (1 ô mật khẩu, không nằm trong tab đăng ký)
+    function findLoginForm() {
+        const pws = [...document.querySelectorAll('input[type="password"]')]
+            .filter((p) => !p.closest('#autotool-root') && !p.closest('#pills-register') && isVisible(p));
+        pws.sort((a, b) => {
+            const fa = (a.closest('form') || document).querySelectorAll('input[type="password"]').length;
+            const fb = (b.closest('form') || document).querySelectorAll('input[type="password"]').length;
+            return fa - fb;
+        });
+        for (const pw of pws) {
+            const form = pw.closest('form');
+            const scope = form || pw.parentElement.parentElement || document;
+            const userInput = [...scope.querySelectorAll('input')].find((i) =>
+                !['password', 'hidden', 'checkbox', 'radio', 'submit', 'button'].includes((i.type || 'text').toLowerCase()) && isVisible(i));
+            if (userInput) return { form, pw, userInput, scope };
+        }
+        return null;
+    }
+
+    async function quickLogin(afterReload) {
+        const user = $id('at-user').value.trim();
+        const pass = $id('at-pass').value;
+        if (!user || !pass) { log('❌ Nhập tài khoản và mật khẩu trước.', '#ef4444'); return; }
+        CONFIG.user = user; CONFIG.pass = pass;
+        saveConfig(CONFIG);
+
+        let f = findLoginForm();
+        if (!f) {
+            // mở tab "Đăng nhập" nếu form đang ẩn
+            const tab = document.querySelector('a[href="#pills-login"], [data-bs-target="#pills-login"], #pills-login-tab');
+            if (tab) { tab.click(); await sleep(500); f = findLoginForm(); }
+        }
+        if (!f && !afterReload) {
+            // Trang này không có form đăng nhập -> về trang chủ rồi tự đăng nhập
+            try { sessionStorage.setItem('autotool_do_login', '1'); } catch (e) {}
+            log('↪ Chuyển về trang chủ để đăng nhập...', '#6b7280');
+            location.href = '/';
+            return;
+        }
+        if (!f) {
+            log('❌ Không thấy form đăng nhập (có thể đã đăng nhập rồi).', '#ef4444');
+            return;
+        }
+
+        setNativeValue(f.userInput, user);
+        setNativeValue(f.pw, pass);
+        const btn = f.scope.querySelector('button[type="submit"], input[type="submit"]')
+                 || [...f.scope.querySelectorAll('button')].find((b) => isVisible(b) && !b.closest('#autotool-root'));
+        log(`🔑 Đang đăng nhập: ${user}`, '#a78bfa');
+        if (btn) btn.click();
+        else if (f.form && f.form.requestSubmit) f.form.requestSubmit();
+        else f.pw.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', keyCode: 13 }));
     }
 
     // ================== FORM ==================
+    // Nút "Tạo đơn": ưu tiên nút có confirm="order"
+    function getOrderBtn() {
+        return document.querySelector('#form_order button[confirm="order"]')
+            || document.querySelector('button[confirm="order"]')
+            || document.querySelector('#form_order button[type="submit"]')
+            || document.querySelector('#form_order .btn-primary')
+            || document.querySelector('#form_order .button');
+    }
+
     function isLoggedIn() {
-        const btn = document.querySelector('#form_order button[type="submit"]')
-                 || document.querySelector('#form_order .btn-primary')
-                 || document.querySelector('#form_order .button');
+        const btn = getOrderBtn();
         if (!btn) return false;
         const onclick = (btn.getAttribute('onclick') || '').toLowerCase();
         return !onclick.includes('notlogin');
@@ -572,7 +677,7 @@
         amountInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: '0' }));
         if (typeof window.validateAmount === 'function') window.validateAmount(CONFIG.amount);
 
-        const submitBtn = document.querySelector('#form_order button[type="submit"], #form_order .btn-primary, #form_order .button');
+        const submitBtn = getOrderBtn();
         if (!submitBtn) throw new Error('Không thấy nút Tạo đơn');
 
         const origOpen = XMLHttpRequest.prototype.open;
@@ -837,7 +942,7 @@
                 bindUI();
                 renderLinks();
                 setStatus('Chưa chạy', '#9ca3af', '#6b7280');
-                log('✅ Tool đã sẫn sàng.Bấm ▶ Bắt đầu để đập lọ.', '#10b981');
+                log('✅ Tool đã sẵn sàng. Bấm ▶ Bắt đầu để đập lọ.', '#10b981');
             } catch (e) {
                 console.error('[AutoTool] Lỗi khi tạo UI:', e);
                 return;
@@ -849,6 +954,13 @@
                     (document.body || document.documentElement).appendChild(UI);
                 }
             }).observe(document.documentElement, { childList: true, subtree: true });
+
+            try {
+                if (sessionStorage.getItem('autotool_do_login') === '1') {
+                    sessionStorage.removeItem('autotool_do_login');
+                    setTimeout(() => quickLogin(true), 1200);
+                }
+            } catch (e) {}
 
             if (!document.querySelector('#form_order')) {
                 setTimeout(() => {
